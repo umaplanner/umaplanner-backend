@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/UmaPlanner.Api/UmaPlanner.Api.csproj" />
+    <Project Path="src/UmaPlanner.Core/UmaPlanner.Core.csproj" />
+    <Project Path="src/UmaPlanner.Infrastructure/UmaPlanner.Infrastructure.csproj" />
+  </Folder>
+</Solution>

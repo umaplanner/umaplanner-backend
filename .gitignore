@@ -55,3 +55,23 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Build outputs
+bin/
+obj/
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Runtime data
+data/
+*.mdb
+*.accdb
+
+# OS
+.DS_Store
+Thumbs.db
