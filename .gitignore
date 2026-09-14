@@ -71,6 +71,7 @@ data/
 
 # Local secrets / dev overrides
 appsettings.Development.json
+**/appsettings.Development.json
 .env
 
 # OS
