@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,11 +19,6 @@ public class UmaRaceSheetPollingService : BackgroundService
     private readonly UmaSheetOptions _options;
     private readonly SheetsService _sheetsService;
     private readonly RaceEventCache _cache;
-
-    // Tune these after inspecting actual colors in logs
-    private static readonly Color PredictedColor = new Color { Red = 1f, Green = 1f, Blue = 0.6f, Alpha = 1f };
-    private static readonly Color ConfirmedColor = new Color { Green = 1f, Blue = 1f, Alpha = 1f };
-    private const double ColorTolerance = 0.15;
 
     public UmaRaceSheetPollingService(
         ILogger<UmaRaceSheetPollingService> logger,
@@ -41,16 +37,19 @@ public class UmaRaceSheetPollingService : BackgroundService
 
         if (string.IsNullOrWhiteSpace(_options.SpreadsheetId))
             throw new InvalidOperationException("Google:SpreadsheetId is missing.");
+
         if (string.IsNullOrWhiteSpace(_options.SheetName))
             throw new InvalidOperationException("Google:SheetName is missing.");
+
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
             throw new InvalidOperationException("Google:ApiKey is missing.");
 
-        _sheetsService = new SheetsService(new Google.Apis.Services.BaseClientService.Initializer
-        {
-            ApiKey = _options.ApiKey,
-            ApplicationName = "UmaPlanner"
-        });
+        _sheetsService = new SheetsService(
+            new Google.Apis.Services.BaseClientService.Initializer
+            {
+                ApiKey = _options.ApiKey,
+                ApplicationName = "UmaPlanner"
+            });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -59,8 +58,7 @@ public class UmaRaceSheetPollingService : BackgroundService
             "Uma race sheet polling service starting (spreadsheet={Id}, sheet={Sheet}, interval={Hours}h)",
             _options.SpreadsheetId,
             _options.SheetName,
-            _options.IntervalHours
-        );
+            _options.IntervalHours);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -73,7 +71,9 @@ public class UmaRaceSheetPollingService : BackgroundService
                 _logger.LogError(ex, "Error while fetching public Google Sheet");
             }
 
-            await Task.Delay(TimeSpan.FromHours(_options.IntervalHours), stoppingToken);
+            await Task.Delay(
+                TimeSpan.FromHours(_options.IntervalHours),
+                stoppingToken);
         }
 
         _logger.LogInformation("Uma race sheet polling service stopping");
@@ -81,19 +81,27 @@ public class UmaRaceSheetPollingService : BackgroundService
 
     private async Task FetchAndProcessSheetAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Fetching sheet {Sheet} from spreadsheet {Id}", _options.SheetName, _options.SpreadsheetId);
+        _logger.LogInformation(
+            "Fetching sheet {Sheet} from spreadsheet {Id}",
+            _options.SheetName,
+            _options.SpreadsheetId);
 
         var request = _sheetsService.Spreadsheets.Get(_options.SpreadsheetId);
         request.Ranges = new[] { _options.SheetName };
         request.IncludeGridData = true;
 
         var spreadsheet = await request.ExecuteAsync(cancellationToken);
-        var sheet = spreadsheet.Sheets.FirstOrDefault(s =>
-            s.Properties != null && s.Properties.Title == _options.SheetName);
 
-        if (sheet == null || sheet.Data == null || sheet.Data.Count == 0)
+        var sheet = spreadsheet.Sheets.FirstOrDefault(s =>
+            s.Properties != null &&
+            s.Properties.Title == _options.SheetName);
+
+        if (sheet?.Data == null || sheet.Data.Count == 0)
         {
-            _logger.LogWarning("No data found for sheet {Sheet}", _options.SheetName);
+            _logger.LogWarning(
+                "No data found for sheet {Sheet}",
+                _options.SheetName);
+
             return;
         }
 
@@ -101,22 +109,26 @@ public class UmaRaceSheetPollingService : BackgroundService
         var rows = gridData.RowData;
 
         var headerRow = rows.FirstOrDefault();
-        if (headerRow == null || headerRow.Values == null)
+        if (headerRow?.Values == null)
         {
-            _logger.LogWarning("No header row found in sheet {Sheet}", _options.SheetName);
+            _logger.LogWarning(
+                "No header row found in sheet {Sheet}",
+                _options.SheetName);
+
             return;
         }
 
         var headers = headerRow.Values
-            .Select((v, i) => new
+            .Select((value, index) => new
             {
-                Index = i,
-                Text = (v.EffectiveValue?.StringValue ?? "").Trim()
+                Index = index,
+                Text = (value.EffectiveValue?.StringValue ?? "").Trim()
             })
             .ToList();
 
         int FindCol(string name) =>
-            headers.FindIndex(h => h.Text.Equals(name, StringComparison.OrdinalIgnoreCase));
+            headers.FindIndex(header =>
+                header.Text.Equals(name, StringComparison.OrdinalIgnoreCase));
 
         int championMeetCol = FindCol("Champion Meet");
         int distanceTypeCol = FindCol("Distance Type");
@@ -130,29 +142,36 @@ public class UmaRaceSheetPollingService : BackgroundService
 
         _logger.LogDebug(
             "Headers in sheet: {Headers}",
-            string.Join(" | ", headers.Select(h => $"[{h.Index}] '{h.Text}'"))
-        );
+            string.Join(
+                " | ",
+                headers.Select(header =>
+                    $"[{header.Index}] '{header.Text}'")));
+
         _logger.LogDebug(
             "Columns found - Champion Meet: {Champion}, Global Date: {GlobalDate}",
             championMeetCol,
-            globalDateCol
-        );
+            globalDateCol);
 
         if (globalDateCol < 0)
         {
-            _logger.LogWarning("Column 'Global Server Release Date' not found in sheet {Sheet}", _options.SheetName);
+            _logger.LogWarning(
+                "Column 'Global Server Release Date' not found in sheet {Sheet}",
+                _options.SheetName);
+
             return;
         }
 
-        // Counters for event titles: CM 1, CM 2, LoH 1, LoH 2, ...
-        var eventCounters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // Counters produce: CM 1, CM 2, LoH 1, LoH 2, etc.
+        var eventCounters = new Dictionary<string, int>(
+            StringComparer.OrdinalIgnoreCase);
 
         var events = new List<UmaRaceEvent>();
 
-        // Skip header row
+        // Skip the header row.
         for (int r = 1; r < rows.Count; r++)
         {
             var rowData = rows[r];
+
             if (rowData.Values == null)
                 continue;
 
@@ -160,71 +179,71 @@ public class UmaRaceSheetPollingService : BackgroundService
 
             string? GetString(int col)
             {
-                if (col < 0 || col >= values.Count) return null;
+                if (col < 0 || col >= values.Count)
+                    return null;
+
                 var cell = values[col];
-                return cell.EffectiveValue?.StringValue ??
-                       cell.EffectiveValue?.NumberValue?.ToString();
+
+                return cell.EffectiveValue?.StringValue
+                    ?? cell.EffectiveValue?.NumberValue?.ToString(
+                        CultureInfo.InvariantCulture);
             }
 
             var championMeetRaw = GetString(championMeetCol);
+
             if (string.IsNullOrWhiteSpace(championMeetRaw))
                 continue;
 
-            var globalDateCell = globalDateCol < values.Count ? values[globalDateCol] : null;
-
-            var eventTitle = ComputeEventTitle(championMeetRaw, eventCounters);
+            var eventTitle = ComputeEventTitle(
+                championMeetRaw,
+                eventCounters);
 
             var releaseDateRaw = GetString(globalDateCol);
             var releaseDate = ParseDate(releaseDateRaw);
+
+            var (groundType, normalizedDistanceType) =
+                ParseGroundAndDistanceType(GetString(distanceTypeCol));
+
+            var globalDateCell = globalDateCol < values.Count
+                ? values[globalDateCol]
+                : null;
 
             var ev = new UmaRaceEvent
             {
                 EventTitle = eventTitle,
                 Name = championMeetRaw,
-                DistanceType = GetString(distanceTypeCol),
+                GroundType = groundType,
+                DistanceType = normalizedDistanceType,
                 Racecourse = GetString(racecourseCol),
                 Distance = GetString(distanceCol),
-                Condition = GetString(conditionCol),
+                GroundCondition = GetString(conditionCol),
                 Weather = GetString(weatherCol),
-                Handed = GetString(handedCol),
+                Direction = GetString(handedCol),
                 Season = GetString(seasonCol),
                 ReleaseDate = releaseDate,
-                IsConfirmed = false
+
+                // Manually entered date = confirmed.
+                // Formula-generated date = estimated / not confirmed.
+                IsConfirmed = IsConfirmedDate(globalDateCell)
             };
 
-            var dateColor = globalDateCell?.EffectiveFormat?.BackgroundColor;
-            ev.IsConfirmed = GetIsConfirmedFromColor(dateColor ?? new Color());
-
-            // Optional debug logging to help tune color thresholds
-            if (dateColor != null &&
-                (dateColor.Red == null || dateColor.Green == null || dateColor.Blue == null))
-            {
-                _logger.LogDebug("Row {Row}: date cell has no color info", r + 1);
-            }
-            else if (dateColor != null)
-            {
-                var type = ev.IsConfirmed ? "Confirmed" : "Predicted/Unknown";
-                _logger.LogDebug(
-                    "Row {Row}: color R={R}, G={G}, B={B} → {Type}",
-                    r + 1,
-                    dateColor.Red,
-                    dateColor.Green,
-                    dateColor.Blue,
-                    type
-                );
-            }
+            _logger.LogDebug(
+                "Row {Row}: release date raw={ReleaseDateRaw}; entered string={StringValue}; entered number={NumberValue}; formula={FormulaValue}; confirmed={IsConfirmed}",
+                r + 1,
+                releaseDateRaw,
+                globalDateCell?.UserEnteredValue?.StringValue,
+                globalDateCell?.UserEnteredValue?.NumberValue,
+                globalDateCell?.UserEnteredValue?.FormulaValue,
+                ev.IsConfirmed);
 
             events.Add(ev);
         }
 
-        // TODO: persist `events` to DB / update in-memory cache / pass to IUmaService
-        _logger.LogInformation("Fetched {Count} race events from public sheet", events.Count);
-
-        // Persist to cache
         await _cache.UpdateAsync(events);
 
-        _logger.LogInformation("Fetched {Count} race events from public sheet", events.Count);
-
+        _logger.LogInformation(
+            "Fetched and cached {Count} race events from public sheet",
+            events.Count);
     }
 
     private static string ComputeEventTitle(
@@ -234,93 +253,132 @@ public class UmaRaceSheetPollingService : BackgroundService
         if (string.IsNullOrWhiteSpace(championMeet))
             return "Unknown";
 
-        string normalized = championMeet.Trim();
+        var normalized = championMeet.Trim();
 
-        if (normalized.Contains("Monthly Match", StringComparison.OrdinalIgnoreCase))
+        if (normalized.Contains(
+                "Monthly Match",
+                StringComparison.OrdinalIgnoreCase))
+        {
             return "Monthly Match";
+        }
 
-        if (normalized.Contains("League of Heroes", StringComparison.OrdinalIgnoreCase))
+        if (normalized.Contains(
+                "League of Heroes",
+                StringComparison.OrdinalIgnoreCase))
         {
             const string abbreviation = "LoH";
-            if (!counters.TryGetValue(abbreviation, out var count))
-                count = 0;
 
+            counters.TryGetValue(abbreviation, out var count);
             count++;
+
             counters[abbreviation] = count;
+
             return $"{abbreviation} {count}";
         }
 
         const string defaultAbbreviation = "CM";
-        if (!counters.TryGetValue(defaultAbbreviation, out var defaultCount))
-            defaultCount = 0;
 
+        counters.TryGetValue(defaultAbbreviation, out var defaultCount);
         defaultCount++;
+
         counters[defaultAbbreviation] = defaultCount;
+
         return $"{defaultAbbreviation} {defaultCount}";
     }
 
-    private bool GetIsConfirmedFromColor(Color color)
+    private static bool IsConfirmedDate(CellData? dateCell)
     {
-        if (!IsColorMatch(color, ConfirmedColor))
+        var enteredValue = dateCell?.UserEnteredValue;
+
+        if (enteredValue == null)
             return false;
 
-        return true;
+        // A formula means the date is an estimate:
+        // e.g. =K20+(L20+A$2)
+        if (!string.IsNullOrWhiteSpace(enteredValue.FormulaValue))
+            return false;
+
+        // Manually entered date cells are usually stored as Google Sheets
+        // serial date values, represented here as NumberValue.
+        if (enteredValue.NumberValue.HasValue)
+            return true;
+
+        // Supports manually entered date text if the spreadsheet uses it.
+        return !string.IsNullOrWhiteSpace(enteredValue.StringValue);
     }
 
-    private bool IsColorMatch(Color actual, Color target)
+    private static DateTime? ParseDate(string? value)
     {
-        if (target.Red != null)
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+
+        if (DateTime.TryParse(
+                trimmed,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out var parsedDate))
         {
-            if (actual.Red == null) return false;
-            if (Math.Abs(actual.Red.Value - target.Red.Value) >= ColorTolerance) return false;
+            return parsedDate;
         }
 
-        if (target.Green != null)
+        if (DateTime.TryParse(
+                trimmed,
+                CultureInfo.CurrentCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out parsedDate))
         {
-            if (actual.Green == null) return false;
-            if (Math.Abs(actual.Green.Value - target.Green.Value) >= ColorTolerance) return false;
+            return parsedDate;
         }
 
-        if (target.Blue != null)
+        // Handles Google Sheets serial date values such as 46280 or 46280.5.
+        var normalized = trimmed.Replace(',', '.');
+
+        if (double.TryParse(
+                normalized,
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out var serial))
         {
-            if (actual.Blue == null) return false;
-            if (Math.Abs(actual.Blue.Value - target.Blue.Value) >= ColorTolerance) return false;
+            if (serial < 1 || serial > 100000)
+                return null;
+
+            var googleSheetsEpoch = new DateTime(1899, 12, 30);
+
+            return googleSheetsEpoch.AddDays(serial);
         }
 
-        if (target.Alpha != null)
-        {
-            if (actual.Alpha == null) return false;
-            if (Math.Abs(actual.Alpha.Value - target.Alpha.Value) >= ColorTolerance) return false;
-        }
-
-        return true;
+        return null;
     }
 
-  private static DateTime? ParseDate(string? value)
-  {
-      if (string.IsNullOrWhiteSpace(value))
-          return null;
+    private static (string groundType, string? distanceType)
+        ParseGroundAndDistanceType(string? distanceType)
+    {
+        if (string.IsNullOrWhiteSpace(distanceType))
+            return ("Turf", null);
 
-      // Try normal parsing first
-      if (DateTime.TryParse(value, out var dt))
-          return dt;
+        var trimmed = distanceType.Trim();
 
-      // Normalize comma to dot for numeric serials
-      var normalized = value.Replace(',', '.');
+        if (trimmed.StartsWith(
+                "Dirt",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = trimmed
+                .Split(
+                    new[] { ' ', '-' },
+                    StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => part.Trim())
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .ToArray();
 
-      if (double.TryParse(
-              normalized,
-              System.Globalization.NumberStyles.Number,
-              System.Globalization.CultureInfo.InvariantCulture,
-              out var serial))
-      {
-          if (serial < 1 || serial > 100000)
-              return null;
+            var lastWord = parts.Length > 0
+                ? parts[^1]
+                : trimmed;
 
-          var epoch = new DateTime(1899, 12, 30);
-          return epoch.AddDays(serial);
-      }
+            return ("Dirt", lastWord);
+        }
 
-      return null;
-  }
+        return ("Turf", trimmed);
+    }
 }
