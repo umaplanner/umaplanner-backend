@@ -221,11 +221,8 @@ public static class MdbReader
             {
                 Id = cardId,
                 CharaId = charaId,
-                VariantNumber = variantNumber,
-                Name = fullName,
                 OutfitTitle = outfitTitles.TryGetValue(cardId, out var ot) ? ot : null,
                 BaseCharacterName = baseNames.TryGetValue(charaId, out var bn) ? bn : null,
-                BaseCharacterExistsInCharaData = knownCharaIds.Contains(charaId)
             });
         }
 
