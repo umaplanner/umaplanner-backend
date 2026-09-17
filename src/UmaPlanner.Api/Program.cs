@@ -1,4 +1,3 @@
-using UmaPlanner.Core.Interfaces;
 using UmaPlanner.Infrastructure.Data;
 using UmaPlanner.Api.Endpoints;
 
@@ -16,12 +15,6 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddOpenApi();
 
-var mdbPath = builder.Configuration["MdbPath"]
-              ?? Environment.GetEnvironmentVariable("UMAPLANNER_MDB_PATH")
-              ?? throw new InvalidOperationException("MdbPath configuration is required.");
-
-builder.Services.AddSingleton<IUmaService>(_ => new UmaService(mdbPath));
-
 builder.Services.AddSingleton<RaceEventCache>();
 builder.Services.AddHostedService<UmaRaceSheetPollingService>();
 
@@ -36,8 +29,6 @@ app.UseCors("AllowAll");
 
 app.UseHttpsRedirection();
 
-// Endpoint import
-app.MapUmaEndpoints();
 app.MapRaceEventEndpoints();
 
 

@@ -66,8 +66,6 @@ obj/
 
 # Runtime data
 data/
-*.mdb
-*.accdb
 
 # Local secrets / dev overrides
 appsettings.Development.json
