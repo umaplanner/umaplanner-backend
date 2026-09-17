@@ -78,6 +78,7 @@ docker run --rm -p 8080:8080 \
   umaplanner-api
 ```
 
+
 ## API
 
 - `GET /races`: Returns the latest race-event snapshot loaded from Google Sheets.
