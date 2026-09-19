@@ -64,6 +64,11 @@ obj/
 *.user
 *.suo
 
+# OS
+.DS_Store
+Thumbs.db
+
+
 # Runtime data
 data/
 
@@ -71,7 +76,3 @@ data/
 appsettings.Development.json
 **/appsettings.Development.json
 .env
-
-# OS
-.DS_Store
-Thumbs.db
