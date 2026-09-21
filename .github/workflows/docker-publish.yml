@@ -2,10 +2,8 @@ name: Docker
 
 on:
   push:
-    branches: [main]
     tags:
       - "v*.*.*"
-  pull_request:
 
 permissions:
   contents: read
@@ -16,7 +14,47 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run tests
+        run: dotnet test UmaPlanner.slnx --configuration Release --verbosity normal
+
+  verify-tag:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      on-main: ${{ steps.check-tag.outputs.on-main }}
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag points to a commit on main
+        id: check-tag
+        shell: bash
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "on-main=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "on-main=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The tag does not point to a commit on main; skipping publish and deploy."
+          fi
+
   build-and-publish:
+    needs: verify-tag
+    if: needs.verify-tag.outputs.on-main == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +65,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -50,7 +87,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -58,7 +95,7 @@ jobs:
 
   deploy:
     needs: build-and-publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: needs.build-and-publish.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
