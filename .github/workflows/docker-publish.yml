@@ -14,7 +14,23 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run tests
+        run: dotnet test UmaPlanner.slnx --configuration Release --verbosity normal
+
   verify-tag:
+    needs: test
     runs-on: ubuntu-latest
     outputs:
       on-main: ${{ steps.check-tag.outputs.on-main }}

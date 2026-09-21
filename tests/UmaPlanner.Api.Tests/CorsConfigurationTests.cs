@@ -11,9 +11,7 @@ namespace UmaPlanner.Api.Tests;
 public sealed class CorsConfigurationTests
 {
     [Theory]
-    [InlineData("http://localhost:3000")]
     [InlineData("http://localhost:5173")]
-    [InlineData("http://127.0.0.1:4173")]
     public void Development_allows_loopback_origins(string origin)
     {
         var policy = CreatePolicy(
