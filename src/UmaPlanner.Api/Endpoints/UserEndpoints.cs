@@ -8,6 +8,26 @@ public static class UserEndpoints
 {
     public static void MapUserEndpoints(this WebApplication app)
     {
+        app.MapGet("/users/me", async (
+            HttpContext context,
+            AppDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var userId = context.Session.GetString(DiscordAuthEndpoints.UserSessionKey);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return Results.Unauthorized();
+            }
+
+            var user = await db.Users
+                .AsNoTracking()
+                .SingleOrDefaultAsync(existing => existing.Id == userId, cancellationToken);
+
+            return user is null
+                ? Results.Unauthorized()
+                : Results.Ok(user);
+        });
+
         app.MapGet("/users", async (
             AppDbContext db,
             CancellationToken cancellationToken) =>
@@ -29,6 +49,28 @@ public static class UserEndpoints
             return user is null
                 ? Results.NotFound(new { message = $"User with ID {id} not found." })
                 : Results.Ok(user);
+        });
+
+        app.MapPut("/users/{id}/trainer-id", async (
+            string id,
+            TrainerIdRequest request,
+            AppDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var user = await db.Users
+                .SingleOrDefaultAsync(existing => existing.Id == id, cancellationToken);
+
+            if (user is null)
+            {
+                return Results.NotFound(new { message = $"User with ID {id} not found." });
+            }
+
+            user.TrainerId = string.IsNullOrWhiteSpace(request.TrainerId)
+                ? null
+                : request.TrainerId.Trim();
+
+            await db.SaveChangesAsync(cancellationToken);
+            return Results.Ok(user);
         });
 
         app.MapPost("/users", async (
@@ -62,4 +104,6 @@ public static class UserEndpoints
             return Results.Created($"/users/{user.Id}", user);
         });
     }
+
+    private sealed record TrainerIdRequest(string? TrainerId);
 }

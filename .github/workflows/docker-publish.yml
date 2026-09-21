@@ -58,18 +58,16 @@ jobs:
 
   deploy:
     needs: build-and-publish
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Trigger deployment on VPS
+      - name: Deploy backend on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            echo "Starting deployment..."
-            sudo systemctl daemon-reload
-            sudo systemctl restart umaplanner
-            echo "Deployment complete!"
+            set -e
+            /opt/umaplanner/scripts/deploy-backend.sh

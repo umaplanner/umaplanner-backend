@@ -59,6 +59,9 @@ The configured launch profiles use:
 
 The Google Sheets polling service fetches data immediately at startup and refreshes it every 12 hours by default. The API will fail during startup if the required Google settings are missing.
 
+After successful authentication, the callback redirects to the configured
+frontend base URL.
+
 ## Docker
 
 Build the image from the repository root:
@@ -116,10 +119,46 @@ To remove the database volume and start fresh:
 docker compose -f docker-compose.dev.yml down -v
 ```
 
-
 ## API
 
 - `GET /races`: Returns the latest race-event snapshot loaded from Google Sheets.
+- `GET /users`: Lists local users.
+- `GET /users/{id}`: Gets one local user.
+- `GET /users/me`: Gets the currently authenticated user, including `avatarUrl`.
+- `PUT /users/{id}/trainer-id`: Sets or clears a user's manually verified trainer ID.
+- `GET /auth/logout`: Logs out the current user, clears the session, and redirects to the frontend root.
+
+Log out from the frontend:
+
+```javascript
+window.location.href = "http://localhost:5063/auth/logout";
+```
+
+After Discord OAuth redirects back to the frontend, request the logged-in user
+with the session cookie:
+
+```javascript
+const response = await fetch("http://localhost:5063/users/me", {
+  credentials: "include"
+});
+const user = await response.json();
+```
+
+Set a trainer ID after the user has been created:
+
+```bash
+curl -X PUT http://localhost:5063/users/<user-id>/trainer-id \
+  -H "Content-Type: application/json" \
+  -d '{"trainerId":"your-trainer-id"}'
+```
+
+To clear it again, send an empty value:
+
+```bash
+curl -X PUT http://localhost:5063/users/<user-id>/trainer-id \
+  -H "Content-Type: application/json" \
+  -d '{"trainerId":""}'
+```
 
 ## Development
 

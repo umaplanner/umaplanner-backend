@@ -26,18 +26,6 @@ dotnet run --project src/UmaPlanner.Api/UmaPlanner.Api.csproj
 
 The launch profiles use `http://localhost:5063` and `https://localhost:7152`. The API needs valid Google Sheets settings.
 
-There are currently no test projects or configured lint/format commands in this repository. If a test project is added, run the full suite with:
-
-```bash
-dotnet test UmaPlanner.slnx
-```
-
-Run one test (or a filtered group) with:
-
-```bash
-dotnet test path/to/TestProject.csproj --filter 'FullyQualifiedName~Namespace.Class.TestName'
-```
-
 ## Architecture and implementation conventions
 
 - Preserve the dependency direction: `Api -> Infrastructure -> Core`; Core must not reference either outer layer. Register infrastructure implementations in `Api/Program.cs` rather than constructing them in endpoint handlers.
