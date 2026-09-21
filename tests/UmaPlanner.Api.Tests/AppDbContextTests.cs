@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using UmaPlanner.Core.Entities;
 using UmaPlanner.Infrastructure.Data;
 using Xunit;
@@ -10,7 +11,7 @@ public sealed class AppDbContextTests
     [Fact]
     public async Task Users_can_be_saved_and_loaded()
     {
-        await using var db = CreateContext();
+        using var db = CreateContext();
         db.Users.Add(new UserOptions
         {
             Id = "user-1",
@@ -38,6 +39,18 @@ public sealed class AppDbContextTests
             .Single(index => index.Properties.Single().Name == nameof(UserOptions.DiscordId));
 
         Assert.True(index.IsUnique);
+    }
+
+    [Fact]
+    public void Users_are_mapped_to_the_users_table()
+    {
+        using var db = CreateContext();
+        var userEntity = db.Model.FindEntityType(typeof(UserOptions))!;
+
+        Assert.Equal("users", userEntity.GetTableName());
+        Assert.Equal(nameof(UserOptions.Id), userEntity.FindProperty(nameof(UserOptions.Id))!.Name);
+        Assert.Equal(nameof(UserOptions.DiscordId), userEntity.FindProperty(nameof(UserOptions.DiscordId))!.Name);
+        Assert.Equal(nameof(UserOptions.Username), userEntity.FindProperty(nameof(UserOptions.Username))!.Name);
     }
 
     private static AppDbContext CreateContext()

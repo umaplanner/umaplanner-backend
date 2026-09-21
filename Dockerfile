@@ -5,13 +5,13 @@ COPY UmaPlanner.slnx ./
 COPY src/UmaPlanner.Api/UmaPlanner.Api.csproj src/UmaPlanner.Api/
 COPY src/UmaPlanner.Core/UmaPlanner.Core.csproj src/UmaPlanner.Core/
 COPY src/UmaPlanner.Infrastructure/UmaPlanner.Infrastructure.csproj src/UmaPlanner.Infrastructure/
+COPY tests/UmaPlanner.Api.Tests/UmaPlanner.Api.Tests.csproj tests/UmaPlanner.Api.Tests/
 RUN dotnet restore UmaPlanner.slnx
 
 COPY src ./src
 RUN dotnet publish src/UmaPlanner.Api/UmaPlanner.Api.csproj \
     --configuration Release \
-    --output /app/publish \
-    --no-restore
+    --output /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
