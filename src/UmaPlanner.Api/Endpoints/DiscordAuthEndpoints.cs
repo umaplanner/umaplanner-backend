@@ -10,6 +10,7 @@ namespace UmaPlanner.Api.Endpoints;
 public static class DiscordAuthEndpoints
 {
     private const string StateKey = "discord_oauth_state";
+    private const string ReturnUrlKey = "discord_oauth_return_url";
     internal const string UserSessionKey = "authenticated_user_id";
     private const string DiscordAuthorizeUrl = "https://discord.com/oauth2/authorize";
     private const string DiscordTokenUrl = "https://discord.com/api/oauth2/token";
@@ -18,6 +19,7 @@ public static class DiscordAuthEndpoints
     public static void MapDiscordAuthEndpoints(this WebApplication app)
     {
         app.MapGet("/auth/discord", (
+            string? returnUrl,
             HttpContext context,
             IConfiguration configuration) =>
         {
@@ -25,14 +27,22 @@ public static class DiscordAuthEndpoints
             var redirectUri = configuration["Discord:RedirectUri"];
 
             if (string.IsNullOrWhiteSpace(clientId) ||
-                string.IsNullOrWhiteSpace(redirectUri) ||
-                string.IsNullOrWhiteSpace(configuration["Frontend:BaseUrl"]))
+                string.IsNullOrWhiteSpace(redirectUri))
             {
                 return Results.Problem("Discord OAuth is not configured.");
             }
 
+            if (!IsValidReturnUrl(returnUrl))
+            {
+                return Results.BadRequest(new
+                {
+                    message = "A valid returnUrl is required."
+                });
+            }
+
             var state = Guid.NewGuid().ToString("N");
             context.Session.SetString(StateKey, state);
+            context.Session.SetString(ReturnUrlKey, returnUrl!);
 
             var authorizationUrl = QueryHelpers.AddQueryString(
                 DiscordAuthorizeUrl,
@@ -64,7 +74,9 @@ public static class DiscordAuthEndpoints
             }
 
             var expectedState = context.Session.GetString(StateKey);
+            var returnUrl = context.Session.GetString(ReturnUrlKey);
             context.Session.Remove(StateKey);
+            context.Session.Remove(ReturnUrlKey);
 
             if (string.IsNullOrWhiteSpace(code) ||
                 !string.Equals(state, expectedState, StringComparison.Ordinal))
@@ -154,36 +166,30 @@ public static class DiscordAuthEndpoints
             await db.SaveChangesAsync(cancellationToken);
             context.Session.SetString(UserSessionKey, user.Id);
 
-            var frontendBaseUrl = configuration["Frontend:BaseUrl"];
-            if (string.IsNullOrWhiteSpace(frontendBaseUrl) ||
-                !IsValidReturnUrl(frontendBaseUrl))
+            if (!IsValidReturnUrl(returnUrl))
             {
                 return Results.Problem(
-                    "The frontend base URL is not configured.",
+                    "The OAuth return URL is missing.",
                     statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            return Results.Redirect(frontendBaseUrl);
+            return Results.Redirect(returnUrl!);
         });
 
-        app.MapGet("/auth/logout", (HttpContext context) =>
+        app.MapGet("/auth/logout", (string? returnUrl, HttpContext context) =>
         {
             context.Session.Clear();
 
-            var frontendBaseUrl = context.RequestServices
-                .GetRequiredService<IConfiguration>()["Frontend:BaseUrl"];
-
-            return string.IsNullOrWhiteSpace(frontendBaseUrl)
-                ? Results.Problem(
-                    "The frontend base URL is not configured.",
-                    statusCode: StatusCodes.Status500InternalServerError)
-                : Results.Redirect(frontendBaseUrl);
+            return IsValidReturnUrl(returnUrl)
+                ? Results.Redirect(returnUrl!)
+                : Results.Redirect("/");
         });
     }
 
-    private static bool IsValidReturnUrl(string returnUrl)
+    private static bool IsValidReturnUrl(string? returnUrl)
     {
-        return Uri.TryCreate(returnUrl, UriKind.Absolute, out var target) &&
+        return !string.IsNullOrWhiteSpace(returnUrl) &&
+               Uri.TryCreate(returnUrl, UriKind.Absolute, out var target) &&
                (target.Scheme == Uri.UriSchemeHttp || target.Scheme == Uri.UriSchemeHttps);
     }
 

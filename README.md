@@ -34,8 +34,16 @@ The application requires the following settings:
 | `Google:SheetName` | Sheet tab to read | `PvP` |
 | `Google:ApiKey` | Google Sheets API key | None |
 | `Polling:IntervalHours` | Polling interval for refreshing race data | `12` |
+| `Cors:AllowedOrigins` | Comma-separated exact origins allowed to make credentialed requests | None |
+| `Cors:VercelProjectPrefix` | Prefix for allowed HTTPS Vercel preview hostnames | `umaplanner-` |
 
 For local development, use environment variables or an untracked configuration override. ASP.NET Core maps double underscores in environment variables to nested configuration keys:
+
+Production allows HTTPS Vercel preview origins whose host starts with
+`Cors__VercelProjectPrefix` and ends with `.vercel.app`, so random preview URLs
+do not need to be added individually. Set `Cors__AllowedOrigins` to exact
+additional origins such as `https://umaplanner.app`. Development also allows
+loopback origins such as `http://localhost:3000` and `http://localhost:5173`.
 
 ## Running locally
 
@@ -126,12 +134,13 @@ docker compose -f docker-compose.dev.yml down -v
 - `GET /users/{id}`: Gets one local user.
 - `GET /users/me`: Gets the currently authenticated user, including `avatarUrl`.
 - `PUT /users/{id}/trainer-id`: Sets or clears a user's manually verified trainer ID.
-- `GET /auth/logout`: Logs out the current user, clears the session, and redirects to the frontend root.
+- `GET /auth/logout?returnUrl=...`: Logs out the current user, clears the session, and redirects to the supplied frontend URL.
 
 Log out from the frontend:
 
 ```javascript
-window.location.href = "http://localhost:5063/auth/logout";
+window.location.href =
+  `http://localhost:5063/auth/logout?returnUrl=${encodeURIComponent(window.location.href)}`;
 ```
 
 After Discord OAuth redirects back to the frontend, request the logged-in user

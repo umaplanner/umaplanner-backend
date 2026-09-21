@@ -1,30 +1,11 @@
 using UmaPlanner.Infrastructure.Data;
 using UmaPlanner.Api.Endpoints;
+using UmaPlanner.Api;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
-    {
-        var frontendBaseUrl = builder.Configuration["Frontend:BaseUrl"];
-
-        if (string.IsNullOrWhiteSpace(frontendBaseUrl))
-        {
-            policy.AllowAnyOrigin()
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        }
-        else
-        {
-            policy.WithOrigins(frontendBaseUrl)
-                  .AllowAnyMethod()
-                  .AllowAnyHeader()
-                  .AllowCredentials();
-        }
-    });
-});
+builder.Services.AddConfiguredCors(builder.Configuration, builder.Environment);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
@@ -53,7 +34,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseCors("AllowAll");
+app.UseCors("ConfiguredCors");
 app.UseSession();
 
 app.UseHttpsRedirection();
