@@ -59,6 +59,9 @@ The configured launch profiles use:
 
 The Google Sheets polling service fetches data immediately at startup and refreshes it every 12 hours by default. The API will fail during startup if the required Google settings are missing.
 
+After successful authentication, the callback redirects to the configured
+frontend base URL.
+
 ## Docker
 
 Build the image from the repository root:
@@ -78,10 +81,84 @@ docker run --rm -p 8080:8080 \
   umaplanner-api
 ```
 
+### Development PostgreSQL
+
+Start the development database from the repository root:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --wait db
+```
+
+The database is available on `localhost:5432` with these development-only
+credentials:
+
+```text
+Host=localhost;Port=5432;Database=umaplanner_dev;Username=postgres;Password=postgres
+```
+
+Check that PostgreSQL is ready:
+
+```bash
+docker compose -f docker-compose.dev.yml ps
+```
+
+Stop the database while keeping its data:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+Keep the database running while the API is running locally. If it has been
+stopped, run the `up` command again before starting the API. Because the API
+uses `localhost`, it must run on the host; an API container would instead use
+the Compose service name `db` as its database host.
+
+To remove the database volume and start fresh:
+
+```bash
+docker compose -f docker-compose.dev.yml down -v
+```
 
 ## API
 
 - `GET /races`: Returns the latest race-event snapshot loaded from Google Sheets.
+- `GET /users`: Lists local users.
+- `GET /users/{id}`: Gets one local user.
+- `GET /users/me`: Gets the currently authenticated user, including `avatarUrl`.
+- `PUT /users/{id}/trainer-id`: Sets or clears a user's manually verified trainer ID.
+- `GET /auth/logout`: Logs out the current user, clears the session, and redirects to the frontend root.
+
+Log out from the frontend:
+
+```javascript
+window.location.href = "http://localhost:5063/auth/logout";
+```
+
+After Discord OAuth redirects back to the frontend, request the logged-in user
+with the session cookie:
+
+```javascript
+const response = await fetch("http://localhost:5063/users/me", {
+  credentials: "include"
+});
+const user = await response.json();
+```
+
+Set a trainer ID after the user has been created:
+
+```bash
+curl -X PUT http://localhost:5063/users/<user-id>/trainer-id \
+  -H "Content-Type: application/json" \
+  -d '{"trainerId":"your-trainer-id"}'
+```
+
+To clear it again, send an empty value:
+
+```bash
+curl -X PUT http://localhost:5063/users/<user-id>/trainer-id \
+  -H "Content-Type: application/json" \
+  -d '{"trainerId":""}'
+```
 
 ## Development
 
