@@ -134,6 +134,12 @@ docker compose -f docker-compose.dev.yml down -v
 - `GET /users/{id}`: Gets one local user.
 - `GET /users/me`: Gets the currently authenticated user, including `avatarUrl`.
 - `PUT /users/{id}/trainer-id`: Sets or clears a user's manually verified trainer ID.
+- `POST /builds`: Saves a batch of builds for the authenticated user. Each item
+  has `event`, `id`, and an object-valued `data` property containing a numeric
+  `lastUpdate` timestamp from `Date.now()`. Matching event/id entries are
+  updated only when the incoming `lastUpdate` is newer.
+- `GET /builds`: Returns all saved builds for the authenticated user. The response
+  includes `event`, `id`, and `data`, but never `userId`.
 - `GET /auth/logout?returnUrl=...`: Logs out the current user, clears the session, and redirects to the supplied frontend URL.
 
 Log out from the frontend:
@@ -167,6 +173,15 @@ To clear it again, send an empty value:
 curl -X PUT http://localhost:5063/users/<user-id>/trainer-id \
   -H "Content-Type: application/json" \
   -d '{"trainerId":""}'
+```
+
+Save builds for the authenticated user:
+
+```bash
+curl -X POST http://localhost:5063/builds \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '[{"event":"CM 20","id":"42cb4e62-b8cf-4118-9a26-c634316a1a7d","data":{"outfitId":"100202","starCount":3,"uniqueLv":1,"speed":1200,"stamina":1200,"power":800,"guts":400,"wisdom":400,"strategy":"Senkou","distanceAptitude":"S","surfaceAptitude":"A","strategyAptitude":"A","mood":0,"skills":[],"forcedSkillPositions":{},"event":"CM 20","id":"42cb4e62-b8cf-4118-9a26-c634316a1a7d","name":"Silence Suzuka"}}]'
 ```
 
 ## Development

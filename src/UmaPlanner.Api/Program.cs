@@ -50,5 +50,6 @@ app.MapRaceEventEndpoints();
 
 app.MapDiscordAuthEndpoints();
 app.MapUserEndpoints();
+app.MapUmaBuildEndpoints();
 
 app.Run();
