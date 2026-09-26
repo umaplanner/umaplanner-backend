@@ -34,6 +34,12 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.EnsureCreatedAsync();
+    await db.Database.MigrateAsync();
+    await db.UmaBuilds
+        .Where(build =>
+            build.DeletedAt != null &&
+            build.DeletedAt < DateTimeOffset.UtcNow.AddDays(-14))
+        .ExecuteDeleteAsync();
 }
 
 if (app.Environment.IsDevelopment())
@@ -51,5 +57,6 @@ app.MapRaceEventEndpoints();
 app.MapDiscordAuthEndpoints();
 app.MapUserEndpoints();
 app.MapUmaBuildEndpoints();
+app.MapTeamEndpoints();
 
 app.Run();

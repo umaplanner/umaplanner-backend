@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using UmaPlanner.Core.Entities;
 using UmaPlanner.Infrastructure.Data;
@@ -20,6 +21,8 @@ public static class UmaBuildEndpoints
                 return Results.Unauthorized();
             }
 
+            await RemoveExpiredBuildsAsync(db, cancellationToken);
+
             var builds = await db.UmaBuilds
                 .AsNoTracking()
                 .Where(build => build.UserId == userId)
@@ -30,7 +33,8 @@ public static class UmaBuildEndpoints
             var response = builds.Select(build => new UmaBuildResponse(
                 build.Event,
                 build.Id,
-                JsonDocument.Parse(build.Data).RootElement.Clone()));
+                JsonDocument.Parse(build.Data).RootElement.Clone(),
+                build.DeletedAt));
 
             return Results.Ok(response);
         });
@@ -46,6 +50,8 @@ public static class UmaBuildEndpoints
             {
                 return Results.Unauthorized();
             }
+
+            await RemoveExpiredBuildsAsync(db, cancellationToken);
 
             if (requests is null)
             {
@@ -104,6 +110,7 @@ public static class UmaBuildEndpoints
                     if (request.LastUpdate > GetLastUpdate(build.Data))
                     {
                         build.Data = request.Data;
+                        build.DeletedAt = null;
                     }
                 }
                 else
@@ -121,11 +128,61 @@ public static class UmaBuildEndpoints
             await db.SaveChangesAsync(cancellationToken);
             return Results.Ok(new { saved = uniqueRequests.Length });
         });
+
+        app.MapDelete("/builds/delete", async (
+            [FromBody] BuildDeleteRequest? request,
+            HttpContext context,
+            AppDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var userId = context.Session.GetString(DiscordAuthEndpoints.UserSessionKey);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return Results.Unauthorized();
+            }
+
+            await RemoveExpiredBuildsAsync(db, cancellationToken);
+
+            if (request is null ||
+                string.IsNullOrWhiteSpace(request.Event) ||
+                string.IsNullOrWhiteSpace(request.Id))
+            {
+                return Results.BadRequest(new
+                {
+                    message = "Event and build id are required."
+                });
+            }
+
+            var eventName = request.Event.Trim();
+            var buildId = request.Id.Trim();
+            var build = await db.UmaBuilds.SingleOrDefaultAsync(
+                existing =>
+                    existing.UserId == userId &&
+                    existing.Event.ToLower() == eventName.ToLower() &&
+                    existing.Id.ToLower() == buildId.ToLower(),
+                cancellationToken);
+
+            if (build is null)
+            {
+                return Results.NotFound(new { message = "Build not found." });
+            }
+
+            build.DeletedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.NoContent();
+        });
     }
 
     public sealed record UmaBuildRequest(string? Event, string? Id, JsonElement Data);
 
-    public sealed record UmaBuildResponse(string Event, string Id, JsonElement Data);
+    public sealed record BuildDeleteRequest(string? Event, string? Id);
+
+    public sealed record UmaBuildResponse(
+        string Event,
+        string Id,
+        JsonElement Data,
+        DateTimeOffset? DeletedAt);
 
     private static bool TryGetLastUpdate(JsonElement data, out long lastUpdate)
     {
@@ -142,5 +199,15 @@ public static class UmaBuildEndpoints
         return TryGetLastUpdate(document.RootElement, out var lastUpdate)
             ? lastUpdate
             : 0;
+    }
+
+    private static Task<int> RemoveExpiredBuildsAsync(
+        AppDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-14);
+        return db.UmaBuilds
+            .Where(build => build.DeletedAt != null && build.DeletedAt < cutoff)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 }

@@ -66,6 +66,8 @@ The configured launch profiles use:
 - HTTPS: `https://localhost:7152`
 
 The Google Sheets polling service fetches data immediately at startup and refreshes it every 12 hours by default. The API will fail during startup if the required Google settings are missing.
+On startup, the API also creates any missing build and team sync tables in the
+configured PostgreSQL database.
 
 After successful authentication, the callback redirects to the configured
 frontend base URL.
@@ -138,8 +140,18 @@ docker compose -f docker-compose.dev.yml down -v
   has `event`, `id`, and an object-valued `data` property containing a numeric
   `lastUpdate` timestamp from `Date.now()`. Matching event/id entries are
   updated only when the incoming `lastUpdate` is newer.
-- `GET /builds`: Returns all saved builds for the authenticated user. The response
-  includes `event`, `id`, and `data`, but never `userId`.
+- `GET /builds`: Returns all saved builds for the authenticated user, including
+  soft-deleted builds. The response includes `event`, `id`, `data`, and nullable
+  `deletedAt`, but never `userId`.
+- `DELETE /builds/delete`: Soft-deletes one build for the authenticated user.
+  Send `event` and the build UUID in the JSON body. Deleted builds are hidden
+  from normal active-build use by the frontend and permanently removed after
+  14 days. A newer POST sync for the same build restores it.
+- `POST /teams`: Saves a batch of event teams for the authenticated user. Each
+  team contains `event`, `uma1`, `uma2`, `uma3`, and a numeric `lastUpdate`;
+  newer timestamps replace older data.
+- `GET /teams`: Returns all saved teams in the same shape, without exposing
+  `userId`.
 - `GET /auth/logout?returnUrl=...`: Logs out the current user, clears the session, and redirects to the supplied frontend URL.
 
 Log out from the frontend:
@@ -182,6 +194,15 @@ curl -X POST http://localhost:5063/builds \
   -H "Content-Type: application/json" \
   -b cookies.txt \
   -d '[{"event":"CM 20","id":"42cb4e62-b8cf-4118-9a26-c634316a1a7d","data":{"outfitId":"100202","starCount":3,"uniqueLv":1,"speed":1200,"stamina":1200,"power":800,"guts":400,"wisdom":400,"strategy":"Senkou","distanceAptitude":"S","surfaceAptitude":"A","strategyAptitude":"A","mood":0,"skills":[],"forcedSkillPositions":{},"event":"CM 20","id":"42cb4e62-b8cf-4118-9a26-c634316a1a7d","name":"Silence Suzuka"}}]'
+```
+
+Delete a build for the authenticated user:
+
+```bash
+curl -X DELETE http://localhost:5063/builds/delete \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"event":"CM 20","id":"42cb4e62-b8cf-4118-9a26-c634316a1a7d"}'
 ```
 
 ## Development
