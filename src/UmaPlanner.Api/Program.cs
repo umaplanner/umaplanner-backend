@@ -26,14 +26,15 @@ builder.Services.AddSingleton<RaceEventCache>();
 builder.Services.AddHostedService<UmaRaceSheetPollingService>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+options.UseNpgsql(
+    builder.Configuration.GetConnectionString("DefaultConnection"),
+    npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)));
 
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.EnsureCreatedAsync();
     await db.Database.MigrateAsync();
     await db.UmaBuilds
         .Where(build =>
