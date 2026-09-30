@@ -4,6 +4,7 @@ using UmaPlanner.Api;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+var authSessionLifetime = TimeSpan.FromDays(31);
 
 builder.Services.AddConfiguredCors(builder.Configuration, builder.Environment);
 
@@ -12,8 +13,10 @@ builder.Services.AddHttpClient();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
+    options.IdleTimeout = authSessionLifetime;
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.MaxAge = authSessionLifetime;
     options.Cookie.SameSite = builder.Environment.IsDevelopment()
         ? SameSiteMode.Lax
         : SameSiteMode.None;

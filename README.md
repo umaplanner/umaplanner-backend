@@ -70,7 +70,9 @@ On startup, the API also creates any missing build and team sync tables in the
 configured PostgreSQL database.
 
 After successful authentication, the callback redirects to the configured
-frontend base URL.
+frontend base URL. The authenticated session cookie remains valid for 31 days
+and is persisted across browser restarts; the server-side session also expires
+after 31 days of inactivity.
 
 ## Docker
 
