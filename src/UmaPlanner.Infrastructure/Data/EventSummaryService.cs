@@ -68,7 +68,13 @@ public sealed class EventSummaryService(
 
         foreach (var eventTeams in teams.GroupBy(team => team.Event, StringComparer.Ordinal))
         {
-            var summary = new EventSummary();
+            var summary = new EventSummary
+            {
+                UserCount = eventTeams
+                    .Select(team => team.UserId)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count()
+            };
             foreach (var team in eventTeams)
             {
                 using var teamDocument = Parse(team.Data, "team", team.UserId, team.Event);

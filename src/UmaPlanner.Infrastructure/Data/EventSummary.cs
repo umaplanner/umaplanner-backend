@@ -7,6 +7,7 @@ namespace UmaPlanner.Infrastructure.Data;
 
 public sealed class EventSummary
 {
+    public int UserCount { get; init; }
     public SortedDictionary<string, int> Outfits { get; init; } = [];
     public SortedDictionary<string, int> Skills { get; init; } = [];
     public SortedDictionary<string, int> RunningStyles { get; init; } = [];
