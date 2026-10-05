@@ -191,9 +191,16 @@ public sealed class EventSummaryService(
                 .Select(card => card.GetProperty("support_card_id").GetRawText())
                 .ToArray()
             : [];
-        data = new BuildData(outfit, strategy, skillValues, cards);
+        data = new BuildData(outfit, NormalizeRunningStyle(strategy), skillValues, cards);
         return true;
     }
+
+    private static string NormalizeRunningStyle(string strategy) =>
+        strategy.Trim() switch
+        {
+            "Oonige" or "Runaway" => "Oonige",
+            var value => value
+        };
 
     private static bool TryString(JsonElement root, string property, out string value)
     {
