@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using UmaPlanner.Core.Entities;
 
 namespace UmaPlanner.Infrastructure.Data;
 
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
     public DbSet<UserOptions> Users => Set<UserOptions>();
     public DbSet<UserUmaBuild> UmaBuilds => Set<UserUmaBuild>();
     public DbSet<UserTeam> Teams => Set<UserTeam>();

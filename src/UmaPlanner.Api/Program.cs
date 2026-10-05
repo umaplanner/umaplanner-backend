@@ -1,6 +1,7 @@
 using UmaPlanner.Infrastructure.Data;
 using UmaPlanner.Api.Endpoints;
 using UmaPlanner.Api;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,13 +11,18 @@ builder.Services.AddConfiguredCors(builder.Configuration, builder.Environment);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
-builder.Services.AddDistributedMemoryCache();
+builder.Services.AddDistributedPostgresCache(options =>
+{
+    options.ConnectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+    options.SchemaName = "public";
+    options.TableName = "distributed_cache";
+    options.CreateIfNotExists = true;
+});
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = authSessionLifetime;
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
-    options.Cookie.MaxAge = authSessionLifetime;
     options.Cookie.SameSite = builder.Environment.IsDevelopment()
         ? SameSiteMode.Lax
         : SameSiteMode.None;
@@ -32,6 +38,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 options.UseNpgsql(
     builder.Configuration.GetConnectionString("DefaultConnection"),
     npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)));
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<AppDbContext>()
+    .SetApplicationName("UmaPlanner");
 
 var app = builder.Build();
 
