@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UserOptions> Users => Set<UserOptions>();
     public DbSet<UserUmaBuild> UmaBuilds => Set<UserUmaBuild>();
     public DbSet<UserTeam> Teams => Set<UserTeam>();
+    public DbSet<UserResult> Results => Set<UserResult>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<UserOptions>()
                 .WithMany()
                 .HasForeignKey(team => team.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserResult>(entity =>
+        {
+            entity.ToTable("user_results");
+            entity.HasKey(result => new { result.UserId, result.Event });
+            entity.Property(result => result.UserId).HasMaxLength(128).IsRequired();
+            entity.Property(result => result.Event).HasMaxLength(128).IsRequired();
+            entity.Property(result => result.Data).HasColumnType("jsonb").IsRequired();
+            entity.HasOne<UserOptions>()
+                .WithMany()
+                .HasForeignKey(result => result.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

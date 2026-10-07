@@ -141,5 +141,6 @@ app.MapDiscordAuthEndpoints();
 app.MapUserEndpoints();
 app.MapUmaBuildEndpoints();
 app.MapTeamEndpoints();
+app.MapResultEndpoints();
 
 app.Run();
