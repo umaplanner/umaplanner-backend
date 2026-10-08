@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Amazon.S3;
 
 var builder = WebApplication.CreateBuilder(args);
-var authSessionLifetime = TimeSpan.FromDays(31);
+var authSessionLifetime = TimeSpan.FromDays(400);
 
 builder.Services.AddConfiguredCors(builder.Configuration, builder.Environment);
 
@@ -24,6 +24,7 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = authSessionLifetime;
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.MaxAge = authSessionLifetime;
     options.Cookie.SameSite = builder.Environment.IsDevelopment()
         ? SameSiteMode.Lax
         : SameSiteMode.None;
