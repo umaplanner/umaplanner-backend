@@ -77,14 +77,18 @@ In the `Production` environment, the event summary service performs one R2 uploa
 invalid credentials, an incorrect endpoint, or insufficient bucket permissions
 prevent the application from starting. It then runs every 10 minutes by default,
 configurable with `EventSummary__IntervalMinutes`. It
-reads each user's teams and referenced builds, then writes changed summaries to
+aligns runs to interval boundaries (for example, at `:00`, `:10`, `:20`, etc.
+for a 10-minute interval). It reads each user's teams and referenced builds,
+then writes summaries to
 `data/overview/<event>.json` in R2. The JSON contains `sha256` and `data`
-properties. The summary data includes `userCount`, the number of distinct users
+properties, plus `nextUpdate`, an ISO-8601 UTC timestamp for the next scheduled
+summary. The summary data includes `userCount`, the number of distinct users
 with a stored team for that event. `runningStyles` is an array of style summaries;
 each includes its build `count`, per-skill and per-support-card counts, and the
 per-style outfit counts. Each also includes the average of each available stat
-(`speed`, `stamina`, `power`, `guts`, and `wisdom`). The hash is calculated from the deterministic summary data, so
-unchanged summaries are not uploaded again. Configure R2 credentials through
+(`speed`, `stamina`, `power`, `guts`, and `wisdom`). The hash covers both the
+summary data and `nextUpdate`, so summaries are refreshed on every interval.
+Configure R2 credentials through
 environment variables such as `R2Storage__AccessKeyId` or the same
 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
 `R2_BUCKET_NAME` names used by the repository's Python tooling rather than

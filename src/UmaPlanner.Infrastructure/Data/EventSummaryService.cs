@@ -40,7 +40,9 @@ public sealed class EventSummaryService(
         var interval = GetInterval();
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(interval, stoppingToken);
+            var now = DateTimeOffset.UtcNow;
+            var nextUpdate = GetNextUpdate(now, interval);
+            await Task.Delay(nextUpdate - now, stoppingToken);
 
             try
             {
@@ -67,6 +69,13 @@ public sealed class EventSummaryService(
         }
 
         return TimeSpan.FromMinutes(intervalMinutes);
+    }
+
+    private static DateTimeOffset GetNextUpdate(DateTimeOffset current, TimeSpan interval)
+    {
+        var ticksSinceEpoch = current.UtcDateTime.Ticks - DateTimeOffset.UnixEpoch.UtcDateTime.Ticks;
+        var ticksUntilBoundary = interval.Ticks - ticksSinceEpoch % interval.Ticks;
+        return DateTimeOffset.UnixEpoch.AddTicks(ticksSinceEpoch + ticksUntilBoundary);
     }
 
     public async Task SummarizeAsync(CancellationToken cancellationToken)
@@ -152,7 +161,8 @@ public sealed class EventSummaryService(
         EventSummary summary,
         CancellationToken cancellationToken)
     {
-        var (document, json) = EventSummarySerializer.Create(summary);
+        var nextUpdate = GetNextUpdate(DateTimeOffset.UtcNow, GetInterval());
+        var (document, json) = EventSummarySerializer.Create(summary, nextUpdate);
         if (environment.IsDevelopment())
         {
             if (!configuration.GetValue("EventSummary:WriteLocalJson", true))
