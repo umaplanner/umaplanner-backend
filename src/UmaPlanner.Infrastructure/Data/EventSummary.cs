@@ -10,9 +10,19 @@ public sealed class EventSummary
     public int UserCount { get; init; }
     public SortedDictionary<string, int> Outfits { get; init; } = [];
     public SortedDictionary<string, int> Skills { get; init; } = [];
-    public SortedDictionary<string, int> RunningStyles { get; init; } = [];
+    public IReadOnlyList<RunningStyleSummary> RunningStyles { get; init; } = [];
     public SortedDictionary<string, int> RunningStyleCombinations { get; init; } = [];
     public SortedDictionary<string, int> SupportCards { get; init; } = [];
+}
+
+public sealed class RunningStyleSummary
+{
+    public required string Style { get; init; }
+    public int Count { get; init; }
+    public SortedDictionary<string, int> Outfits { get; init; } = [];
+    public SortedDictionary<string, int> Skills { get; init; } = [];
+    public SortedDictionary<string, int> SupportCards { get; init; } = [];
+    public SortedDictionary<string, double> AverageStats { get; init; } = [];
 }
 
 public sealed class EventSummaryDocument
@@ -29,7 +39,7 @@ internal static class EventSummarySerializer
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false
+        WriteIndented = true
     };
 
     public static (EventSummaryDocument Document, string Json) Create(EventSummary summary)

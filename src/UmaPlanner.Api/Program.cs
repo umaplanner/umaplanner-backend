@@ -87,6 +87,10 @@ if (builder.Environment.IsProduction())
                 ServiceURL = r2Options.Endpoint,
                 AuthenticationRegion = r2Options.Region
             }));
+}
+
+if (builder.Environment.IsDevelopment() || builder.Environment.IsProduction())
+{
     builder.Services.AddHostedService<EventSummaryService>();
 }
 

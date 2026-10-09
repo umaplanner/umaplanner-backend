@@ -21,9 +21,10 @@ public sealed class R2StorageOptions
 
 public sealed class EventSummaryService(
     IServiceScopeFactory scopeFactory,
-    IAmazonS3 storage,
-    R2StorageOptions options,
-    ILogger<EventSummaryService> logger) : BackgroundService
+    IHostEnvironment environment,
+    ILogger<EventSummaryService> logger,
+    IAmazonS3? storage = null,
+    R2StorageOptions? options = null) : BackgroundService
 {
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -75,6 +76,7 @@ public sealed class EventSummaryService(
                     .Distinct(StringComparer.Ordinal)
                     .Count()
             };
+            var runningStyles = new SortedDictionary<string, RunningStyleAccumulator>(StringComparer.Ordinal);
             foreach (var team in eventTeams)
             {
                 using var teamDocument = Parse(team.Data, "team", team.UserId, team.Event);
@@ -95,9 +97,17 @@ public sealed class EventSummaryService(
                     {
                         teamBuilds.Add(data);
                         Add(summary.Outfits, data.OutfitId);
-                        Add(summary.RunningStyles, data.RunningStyle);
-                        foreach (var skill in data.Skills)
-                            Add(summary.Skills, skill);
+                        if (!runningStyles.TryGetValue(data.RunningStyle, out var style))
+                        {
+                            style = new RunningStyleAccumulator(data.RunningStyle);
+                            runningStyles.Add(data.RunningStyle, style);
+                        }
+                        style.Add(data);
+                        if (!data.IsPlan)
+                        {
+                            foreach (var skill in data.Skills)
+                                Add(summary.Skills, skill);
+                        }
                         foreach (var card in data.SupportCards)
                             Add(summary.SupportCards, card);
                     }
@@ -112,7 +122,15 @@ public sealed class EventSummaryService(
                 }
             }
 
-            await WriteIfChangedAsync(eventTeams.Key, summary, cancellationToken);
+            await WriteIfChangedAsync(eventTeams.Key, new EventSummary
+            {
+                UserCount = summary.UserCount,
+                Outfits = summary.Outfits,
+                Skills = summary.Skills,
+                RunningStyles = runningStyles.Values.Select(style => style.ToSummary()).ToArray(),
+                RunningStyleCombinations = summary.RunningStyleCombinations,
+                SupportCards = summary.SupportCards
+            }, cancellationToken);
         }
     }
 
@@ -122,6 +140,33 @@ public sealed class EventSummaryService(
         CancellationToken cancellationToken)
     {
         var (document, json) = EventSummarySerializer.Create(summary);
+        if (environment.IsDevelopment())
+        {
+            var repositoryRoot = FindRepositoryRoot(environment.ContentRootPath);
+            var localPath = Path.Combine(
+                repositoryRoot,
+                $"event-summary-{Uri.EscapeDataString(eventName)}.json");
+            string? existingLocalSha = null;
+            if (File.Exists(localPath))
+            {
+                existingLocalSha = EventSummarySerializer.ReadSha256(
+                    await File.ReadAllTextAsync(localPath, cancellationToken));
+            }
+
+            if (string.Equals(existingLocalSha, document.Sha256, StringComparison.Ordinal))
+            {
+                logger.LogDebug("Event summary unchanged for {Event}.", eventName);
+                return;
+            }
+
+            await File.WriteAllTextAsync(localPath, json, cancellationToken);
+            logger.LogInformation("Wrote event summary for {Event} to {Path}.", eventName, localPath);
+            return;
+        }
+
+        if (storage is null || options is null)
+            throw new InvalidOperationException("R2 storage is required outside Development.");
+
         var key = $"data/overview/{eventName}.json";
         string? existingSha = null;
         try
@@ -177,6 +222,9 @@ public sealed class EventSummaryService(
             !TryString(root, "strategy", out var strategy) ||
             !root.TryGetProperty("skills", out var skills) || skills.ValueKind != JsonValueKind.Array)
             return false;
+        var isPlan = root.TryGetProperty("build-type", out var buildType) &&
+                     buildType.ValueKind == JsonValueKind.String &&
+                     string.Equals(buildType.GetString(), "plan", StringComparison.OrdinalIgnoreCase);
 
         var skillValues = skills.EnumerateArray()
             .Where(value => value.ValueKind == JsonValueKind.String)
@@ -191,8 +239,32 @@ public sealed class EventSummaryService(
                 .Select(card => card.GetProperty("support_card_id").GetRawText())
                 .ToArray()
             : [];
-        data = new BuildData(outfit, NormalizeRunningStyle(strategy), skillValues, cards);
+        var stats = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        foreach (var stat in new[] { "speed", "stamina", "power", "guts", "wisdom" })
+        {
+            if (root.TryGetProperty(stat, out var value) &&
+                value.ValueKind == JsonValueKind.Number &&
+                value.TryGetDouble(out var statValue) &&
+                double.IsFinite(statValue))
+            {
+                stats.Add(stat, statValue);
+            }
+        }
+
+        data = new BuildData(outfit, NormalizeRunningStyle(strategy), skillValues, cards, stats, isPlan);
         return true;
+    }
+
+    private static string FindRepositoryRoot(string contentRootPath)
+    {
+        for (var directory = new DirectoryInfo(contentRootPath); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "UmaPlanner.slnx")))
+                return directory.FullName;
+        }
+
+        throw new InvalidOperationException(
+            $"Could not find UmaPlanner.slnx above the content root '{contentRootPath}'.");
     }
 
     private static string NormalizeRunningStyle(string strategy) =>
@@ -224,5 +296,46 @@ public sealed class EventSummaryService(
         string OutfitId,
         string RunningStyle,
         IReadOnlyList<string> Skills,
-        IReadOnlyList<string> SupportCards);
+        IReadOnlyList<string> SupportCards,
+        IReadOnlyDictionary<string, double> Stats,
+        bool IsPlan);
+
+    private sealed class RunningStyleAccumulator(string style)
+    {
+        private readonly SortedDictionary<string, int> outfits = new(StringComparer.Ordinal);
+        private readonly SortedDictionary<string, int> skills = new(StringComparer.Ordinal);
+        private readonly SortedDictionary<string, int> supportCards = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (double Sum, int Count)> stats = new(StringComparer.Ordinal);
+        private int count;
+
+        public void Add(BuildData build)
+        {
+            count++;
+            EventSummaryService.Add(outfits, build.OutfitId);
+            foreach (var card in build.SupportCards)
+                EventSummaryService.Add(supportCards, card);
+            if (build.IsPlan)
+                return;
+
+            foreach (var skill in build.Skills)
+                EventSummaryService.Add(skills, skill);
+            foreach (var (stat, value) in build.Stats)
+            {
+                var current = stats.TryGetValue(stat, out var aggregate) ? aggregate : (0d, 0);
+                stats[stat] = (current.Item1 + value, current.Item2 + 1);
+            }
+        }
+
+        public RunningStyleSummary ToSummary() => new()
+        {
+            Style = style,
+            Count = count,
+            Outfits = outfits,
+            Skills = skills,
+            SupportCards = supportCards,
+            AverageStats = new SortedDictionary<string, double>(
+                stats.ToDictionary(pair => pair.Key, pair => pair.Value.Sum / pair.Value.Count),
+                StringComparer.Ordinal)
+        };
+    }
 }

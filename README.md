@@ -77,12 +77,16 @@ prevent the application from starting. It then runs at every UTC full hour. It
 reads each user's teams and referenced builds, then writes changed summaries to
 `data/overview/<event>.json` in R2. The JSON contains `sha256` and `data`
 properties. The summary data includes `userCount`, the number of distinct users
-with a stored team for that event. The hash is calculated from the deterministic
-summary data, so unchanged summaries are not uploaded again. Configure R2 credentials through
+with a stored team for that event. `runningStyles` is an array of style summaries;
+each includes its build `count`, per-skill and per-support-card counts, and the
+per-style outfit counts. Each also includes the average of each available stat
+(`speed`, `stamina`, `power`, `guts`, and `wisdom`). The hash is calculated from the deterministic summary data, so
+unchanged summaries are not uploaded again. Configure R2 credentials through
 environment variables such as `R2Storage__AccessKeyId` or the same
 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
 `R2_BUCKET_NAME` names used by the repository's Python tooling rather than
-committing secrets to `appsettings.json`.
+committing secrets to `appsettings.json`. In Development, summaries are instead
+written to `event-summary-<event>.json` files in the repository root.
 On startup, the API also creates any missing build and team sync tables in the
 configured PostgreSQL database.
 
