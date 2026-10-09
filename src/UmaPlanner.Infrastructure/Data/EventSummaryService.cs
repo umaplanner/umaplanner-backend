@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -22,24 +23,24 @@ public sealed class R2StorageOptions
 public sealed class EventSummaryService(
     IServiceScopeFactory scopeFactory,
     IHostEnvironment environment,
+    IConfiguration configuration,
     ILogger<EventSummaryService> logger,
     IAmazonS3? storage = null,
     R2StorageOptions? options = null) : BackgroundService
 {
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
+        _ = GetInterval();
         await SummarizeAsync(cancellationToken);
         await base.StartAsync(cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var interval = GetInterval();
         while (!stoppingToken.IsCancellationRequested)
         {
-            var now = DateTimeOffset.UtcNow;
-            var nextHour = new DateTimeOffset(
-                now.Year, now.Month, now.Day, now.Hour, 0, 0, TimeSpan.Zero).AddHours(1);
-            await Task.Delay(nextHour - now, stoppingToken);
+            await Task.Delay(interval, stoppingToken);
 
             try
             {
@@ -54,6 +55,18 @@ public sealed class EventSummaryService(
                 logger.LogError(exception, "Failed to summarize event data.");
             }
         }
+    }
+
+    private TimeSpan GetInterval()
+    {
+        var intervalMinutes = configuration.GetValue("EventSummary:IntervalMinutes", 10);
+        if (intervalMinutes <= 0)
+        {
+            throw new InvalidOperationException(
+                "EventSummary:IntervalMinutes must be greater than zero.");
+        }
+
+        return TimeSpan.FromMinutes(intervalMinutes);
     }
 
     public async Task SummarizeAsync(CancellationToken cancellationToken)
@@ -142,6 +155,12 @@ public sealed class EventSummaryService(
         var (document, json) = EventSummarySerializer.Create(summary);
         if (environment.IsDevelopment())
         {
+            if (!configuration.GetValue("EventSummary:WriteLocalJson", true))
+            {
+                logger.LogDebug("Local event summary output is disabled.");
+                return;
+            }
+
             var repositoryRoot = FindRepositoryRoot(environment.ContentRootPath);
             var localPath = Path.Combine(
                 repositoryRoot,

@@ -34,6 +34,8 @@ The application requires the following settings:
 | `Google:SheetName` | Sheet tab to read | `PvP` |
 | `Google:ApiKey` | Google Sheets API key | None |
 | `Polling:IntervalHours` | Polling interval for refreshing race data | `12` |
+| `EventSummary:WriteLocalJson` | Write summary JSON files in Development | `true` |
+| `EventSummary:IntervalMinutes` | Interval between event summary runs | `10` |
 | `R2Storage:AccountId` | Cloudflare account ID; used to derive the R2 S3 API endpoint | None |
 | `R2Storage:Endpoint` | Optional Cloudflare R2 S3 API endpoint (`https://<account-id>.r2.cloudflarestorage.com`) | Derived from account ID; account ID takes precedence |
 | `R2Storage:AccessKeyId` | R2 access key ID | None |
@@ -73,7 +75,8 @@ The configured launch profiles use:
 The Google Sheets polling service fetches data immediately at startup and refreshes it every 12 hours by default. The API will fail during startup if the required Google settings are missing.
 In the `Production` environment, the event summary service performs one R2 upload during application startup, so
 invalid credentials, an incorrect endpoint, or insufficient bucket permissions
-prevent the application from starting. It then runs at every UTC full hour. It
+prevent the application from starting. It then runs every 10 minutes by default,
+configurable with `EventSummary__IntervalMinutes`. It
 reads each user's teams and referenced builds, then writes changed summaries to
 `data/overview/<event>.json` in R2. The JSON contains `sha256` and `data`
 properties. The summary data includes `userCount`, the number of distinct users
@@ -86,7 +89,10 @@ environment variables such as `R2Storage__AccessKeyId` or the same
 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
 `R2_BUCKET_NAME` names used by the repository's Python tooling rather than
 committing secrets to `appsettings.json`. In Development, summaries are instead
-written to `event-summary-<event>.json` files in the repository root.
+written to `event-summary-<event>.json` files in the repository root. Set
+`EventSummary__WriteLocalJson=false` to disable these files; the default is
+`true` in Development. The interval setting also applies in Development and
+can be overridden with `EventSummary__IntervalMinutes`.
 On startup, the API also creates any missing build and team sync tables in the
 configured PostgreSQL database.
 
