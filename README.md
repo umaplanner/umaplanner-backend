@@ -99,8 +99,8 @@ written to `event-summary-<event>.json` files in the repository root. Set
 `EventSummary__WriteLocalJson=false` to disable these files; the default is
 `true` in Development. The interval setting also applies in Development and
 can be overridden with `EventSummary__IntervalMinutes`.
-On startup, the API also creates any missing build and team sync tables in the
-configured PostgreSQL database.
+On startup, the API applies pending database migrations, including the daily
+admin statistics table.
 
 After successful authentication, the callback redirects to the configured
 frontend base URL. The persistent session cookie survives browser restarts.
@@ -174,10 +174,30 @@ docker compose -f docker-compose.dev.yml down -v
 - `GET /users/{id}`: Gets one local user.
 - `GET /users/me`: Gets the currently authenticated user, including `avatarUrl`.
   `isAdmin` is `true` for admins and omitted for regular users.
-- `GET /admin/stats`: Returns counts for the users, builds, teams, results, and
-  data-protection-key tables. Requires admin access.
-- `GET /admin/users/build-counts`: Returns total, active, and deleted build
-  counts per user. Requires admin access.
+- `GET /admin/stats?days=1`: Returns daily overall user, build, and team counts
+  for the requested number of days (1-3650, default 1). A team is counted only
+  when at least one of `uma1`, `uma2`, or `uma3` has a non-empty build selection.
+- `GET /admin/stats/max-days`: Returns the inclusive date span available in
+  stored overall snapshots as `maxDays`, with the earliest and latest dates.
+  Before the first snapshot, `maxDays` is `0` and both dates are `null`.
+- `GET /admin/stats/events?days=1`: Returns daily user, build, and team counts
+  grouped by event for the requested number of days (1-3650, default 1). Add
+  `event=<saved event name>` to return only that event, for example
+  `/admin/stats/events?event=CM%201`. The value must match the saved event name;
+  any `compareTo` comparison is filtered to that same event.
+  Both endpoints read the same snapshots stored in PostgreSQL, captured at
+  each UTC midnight; if none exist, the service records an initial baseline on
+  startup. Both require admin access. Add `compareTo=N` (1-3650) to
+  either endpoint to compare the newest snapshot with the one from N days
+  earlier. `comparison` contains only `usersPercentChange`,
+  `buildsPercentChange`, and `teamsPercentChange`. On the events endpoint with
+  an `event` filter, those three fields are returned directly; without a filter,
+  `comparison` maps each event name to those three fields. If the earlier
+  snapshot is unavailable, or its count is zero while the current count is
+  nonzero, the corresponding percentage is `null`.
+  For example,
+  `/admin/stats?compareTo=3` compares the newest snapshot with the one from
+  three days earlier.
 - `PUT /users/{id}/trainer-id`: Sets or clears a user's manually verified trainer ID.
 - `POST /builds`: Saves a batch of builds for the authenticated user. Each item
   has `event`, `id`, and an object-valued `data` property containing a numeric

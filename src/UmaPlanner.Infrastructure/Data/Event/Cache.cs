@@ -1,8 +1,8 @@
 using UmaPlanner.Core.Entities;
 
-namespace UmaPlanner.Infrastructure.Data;
+namespace UmaPlanner.Infrastructure.Data.Event;
 
-public class RaceEventCache
+public class Cache
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private List<UmaRaceEvent> _events = new();

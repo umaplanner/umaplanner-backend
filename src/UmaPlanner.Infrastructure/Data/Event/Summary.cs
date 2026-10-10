@@ -3,9 +3,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace UmaPlanner.Infrastructure.Data;
+namespace UmaPlanner.Infrastructure.Data.Event;
 
-public sealed class EventSummary
+public sealed class Summary
 {
     public int UserCount { get; init; }
     public SortedDictionary<string, int> Outfits { get; init; } = [];
@@ -25,7 +25,7 @@ public sealed class RunningStyleSummary
     public SortedDictionary<string, double> AverageStats { get; init; } = [];
 }
 
-public sealed class EventSummaryDocument
+public sealed class SummaryDocument
 {
     [JsonPropertyName("sha256")]
     public required string Sha256 { get; init; }
@@ -34,10 +34,10 @@ public sealed class EventSummaryDocument
     public required DateTimeOffset NextUpdate { get; init; }
 
     [JsonPropertyName("data")]
-    public required EventSummary Data { get; init; }
+    public required Summary Data { get; init; }
 }
 
-internal static class EventSummarySerializer
+internal static class SummarySerializer
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -45,13 +45,13 @@ internal static class EventSummarySerializer
         WriteIndented = true
     };
 
-    public static (EventSummaryDocument Document, string Json) Create(
-        EventSummary summary,
+    public static (SummaryDocument Document, string Json) Create(
+        Summary summary,
         DateTimeOffset nextUpdate)
     {
         var hashInput = JsonSerializer.Serialize(new { NextUpdate = nextUpdate, Data = summary }, Options);
         var sha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashInput))).ToLowerInvariant();
-        var document = new EventSummaryDocument
+        var document = new SummaryDocument
         {
             Sha256 = sha,
             NextUpdate = nextUpdate,

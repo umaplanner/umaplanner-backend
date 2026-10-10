@@ -1,5 +1,5 @@
 using UmaPlanner.Core.Entities;
-using UmaPlanner.Infrastructure.Data;
+using UmaPlanner.Infrastructure.Data.Event;
 using Xunit;
 
 namespace UmaPlanner.Api.Tests;
@@ -9,7 +9,7 @@ public sealed class RaceEventCacheTests
     [Fact]
     public async Task GetAllAsync_returns_a_copy_of_the_cached_snapshot()
     {
-        var cache = new RaceEventCache();
+        var cache = new Cache();
         var original = new List<UmaRaceEvent>
         {
             new() { EventTitle = "CM 1", Name = "Champion Meet" }
@@ -30,7 +30,7 @@ public sealed class RaceEventCacheTests
     [Fact]
     public async Task UpdateAsync_replaces_the_complete_snapshot()
     {
-        var cache = new RaceEventCache();
+        var cache = new Cache();
 
         await cache.UpdateAsync(
         [
@@ -48,7 +48,7 @@ public sealed class RaceEventCacheTests
     [Fact]
     public async Task UpdateAsync_null_replaces_snapshot_with_empty_list()
     {
-        var cache = new RaceEventCache();
+        var cache = new Cache();
 
         await cache.UpdateAsync([new UmaRaceEvent { EventTitle = "CM 1" }]);
         await cache.UpdateAsync(null!);

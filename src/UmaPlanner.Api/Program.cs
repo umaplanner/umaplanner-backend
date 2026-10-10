@@ -1,4 +1,6 @@
 using UmaPlanner.Infrastructure.Data;
+using UmaPlanner.Infrastructure.Data.Admin;
+using UmaPlanner.Infrastructure.Data.Event;
 using UmaPlanner.Api.Endpoints;
 using UmaPlanner.Api;
 using Microsoft.AspNetCore.DataProtection;
@@ -33,8 +35,10 @@ builder.Services.AddSession(options =>
         : CookieSecurePolicy.Always;
 });
 
-builder.Services.AddSingleton<RaceEventCache>();
-builder.Services.AddHostedService<UmaRaceSheetPollingService>();
+builder.Services.AddSingleton<Cache>();
+builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddHostedService<RaceSheetPollingService>();
+builder.Services.AddHostedService<StatsSnapshotPollingService>();
 
 if (builder.Environment.IsProduction())
 {
@@ -91,7 +95,7 @@ if (builder.Environment.IsProduction())
 
 if (builder.Environment.IsDevelopment() || builder.Environment.IsProduction())
 {
-    builder.Services.AddHostedService<EventSummaryService>();
+    builder.Services.AddHostedService<SummaryService>();
 }
 
 static string FirstConfigured(string current, params string[] environmentNames)
