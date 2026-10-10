@@ -144,6 +144,7 @@ app.MapRaceEventEndpoints();
 
 app.MapDiscordAuthEndpoints();
 app.MapUserEndpoints();
+app.MapAdminEndpoints();
 app.MapUmaBuildEndpoints();
 app.MapTeamEndpoints();
 app.MapResultEndpoints();

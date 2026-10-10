@@ -34,6 +34,7 @@ The application requires the following settings:
 | `Google:SheetName` | Sheet tab to read | `PvP` |
 | `Google:ApiKey` | Google Sheets API key | None |
 | `Polling:IntervalHours` | Polling interval for refreshing race data | `12` |
+| `Admin:AdminDiscordIds` | Comma-separated Discord IDs with access to the admin API | None |
 | `EventSummary:WriteLocalJson` | Write summary JSON files in Development | `true` |
 | `EventSummary:IntervalMinutes` | Interval between event summary runs | `10` |
 | `R2Storage:AccountId` | Cloudflare account ID; used to derive the R2 S3 API endpoint | None |
@@ -105,6 +106,9 @@ After successful authentication, the callback redirects to the configured
 frontend base URL. The persistent session cookie survives browser restarts.
 Both the cookie and server-side session remain valid for up to 400 days;
 activity refreshes the server-side session, and `/auth/logout` clears it.
+Configure admin access with `Admin__AdminDiscordIds` in the API environment.
+Only users whose Discord IDs are in this list can view administrative
+statistics.
 
 ## Docker
 
@@ -169,6 +173,11 @@ docker compose -f docker-compose.dev.yml down -v
 - `GET /users`: Lists local users.
 - `GET /users/{id}`: Gets one local user.
 - `GET /users/me`: Gets the currently authenticated user, including `avatarUrl`.
+  `isAdmin` is `true` for admins and omitted for regular users.
+- `GET /admin/stats`: Returns counts for the users, builds, teams, results, and
+  data-protection-key tables. Requires admin access.
+- `GET /admin/users/build-counts`: Returns total, active, and deleted build
+  counts per user. Requires admin access.
 - `PUT /users/{id}/trainer-id`: Sets or clears a user's manually verified trainer ID.
 - `POST /builds`: Saves a batch of builds for the authenticated user. Each item
   has `event`, `id`, and an object-valued `data` property containing a numeric
