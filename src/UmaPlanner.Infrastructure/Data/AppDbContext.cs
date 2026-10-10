@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using UmaPlanner.Core.Entities;
+using UmaPlanner.Infrastructure.Data.Admin;
 
 namespace UmaPlanner.Infrastructure.Data;
 
@@ -12,6 +13,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UserUmaBuild> UmaBuilds => Set<UserUmaBuild>();
     public DbSet<UserTeam> Teams => Set<UserTeam>();
     public DbSet<UserResult> Results => Set<UserResult>();
+    public DbSet<DailyStat> DailyStats => Set<DailyStat>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +69,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(result => result.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DailyStat>(entity =>
+        {
+            entity.ToTable("admin_daily_stats");
+            entity.HasKey(stat => new { stat.Date, stat.Event });
+            entity.Property(stat => stat.Date).HasColumnType("date");
+            entity.Property(stat => stat.Event).HasMaxLength(128).IsRequired();
+            entity.Property(stat => stat.UserCount).IsRequired();
+            entity.Property(stat => stat.BuildCount).IsRequired();
+            entity.Property(stat => stat.TeamCount).IsRequired();
         });
     }
 }

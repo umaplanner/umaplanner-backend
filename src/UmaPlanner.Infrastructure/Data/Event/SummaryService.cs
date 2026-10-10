@@ -7,8 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using UmaPlanner.Core.Entities;
+using UmaPlanner.Infrastructure.Data;
 
-namespace UmaPlanner.Infrastructure.Data;
+namespace UmaPlanner.Infrastructure.Data.Event;
 
 public sealed class R2StorageOptions
 {
@@ -20,11 +21,11 @@ public sealed class R2StorageOptions
     public string Region { get; set; } = "auto";
 }
 
-public sealed class EventSummaryService(
+public sealed class SummaryService(
     IServiceScopeFactory scopeFactory,
     IHostEnvironment environment,
     IConfiguration configuration,
-    ILogger<EventSummaryService> logger,
+    ILogger<SummaryService> logger,
     IAmazonS3? storage = null,
     R2StorageOptions? options = null) : BackgroundService
 {
@@ -91,13 +92,8 @@ public sealed class EventSummaryService(
 
         foreach (var eventTeams in teams.GroupBy(team => team.Event, StringComparer.Ordinal))
         {
-            var summary = new EventSummary
-            {
-                UserCount = eventTeams
-                    .Select(team => team.UserId)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count()
-            };
+            var summary = new Summary();
+            var usersWithBuilds = new HashSet<string>(StringComparer.Ordinal);
             var runningStyles = new SortedDictionary<string, RunningStyleAccumulator>(StringComparer.Ordinal);
             foreach (var team in eventTeams)
             {
@@ -117,6 +113,7 @@ public sealed class EventSummaryService(
                     using var buildDocument = Parse(build.Data, "build", team.UserId, team.Event);
                     if (buildDocument is not null && TryReadBuild(buildDocument.RootElement, out var data))
                     {
+                        usersWithBuilds.Add(team.UserId);
                         teamBuilds.Add(data);
                         Add(summary.Outfits, data.OutfitId);
                         if (!runningStyles.TryGetValue(data.RunningStyle, out var style))
@@ -144,9 +141,9 @@ public sealed class EventSummaryService(
                 }
             }
 
-            await WriteIfChangedAsync(eventTeams.Key, new EventSummary
+            await WriteIfChangedAsync(eventTeams.Key, new Summary
             {
-                UserCount = summary.UserCount,
+                UserCount = usersWithBuilds.Count,
                 Outfits = summary.Outfits,
                 Skills = summary.Skills,
                 RunningStyles = runningStyles.Values.Select(style => style.ToSummary()).ToArray(),
@@ -158,11 +155,11 @@ public sealed class EventSummaryService(
 
     private async Task WriteIfChangedAsync(
         string eventName,
-        EventSummary summary,
+        Summary summary,
         CancellationToken cancellationToken)
     {
         var nextUpdate = GetNextUpdate(DateTimeOffset.UtcNow, GetInterval());
-        var (document, json) = EventSummarySerializer.Create(summary, nextUpdate);
+        var (document, json) = SummarySerializer.Create(summary, nextUpdate);
         if (environment.IsDevelopment())
         {
             if (!configuration.GetValue("EventSummary:WriteLocalJson", true))
@@ -178,7 +175,7 @@ public sealed class EventSummaryService(
             string? existingLocalSha = null;
             if (File.Exists(localPath))
             {
-                existingLocalSha = EventSummarySerializer.ReadSha256(
+                existingLocalSha = SummarySerializer.ReadSha256(
                     await File.ReadAllTextAsync(localPath, cancellationToken));
             }
 
@@ -206,7 +203,7 @@ public sealed class EventSummaryService(
                 Key = key
             }, cancellationToken);
             using var reader = new StreamReader(response.ResponseStream);
-            existingSha = EventSummarySerializer.ReadSha256(await reader.ReadToEndAsync(cancellationToken));
+            existingSha = SummarySerializer.ReadSha256(await reader.ReadToEndAsync(cancellationToken));
         }
         catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -340,14 +337,14 @@ public sealed class EventSummaryService(
         public void Add(BuildData build)
         {
             count++;
-            EventSummaryService.Add(outfits, build.OutfitId);
+            SummaryService.Add(outfits, build.OutfitId);
             foreach (var card in build.SupportCards)
-                EventSummaryService.Add(supportCards, card);
+                SummaryService.Add(supportCards, card);
             if (build.IsPlan)
                 return;
 
             foreach (var skill in build.Skills)
-                EventSummaryService.Add(skills, skill);
+                SummaryService.Add(skills, skill);
             foreach (var (stat, value) in build.Stats)
             {
                 var current = stats.TryGetValue(stat, out var aggregate) ? aggregate : (0d, 0);

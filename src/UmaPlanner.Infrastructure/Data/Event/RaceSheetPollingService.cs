@@ -10,20 +10,21 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UmaPlanner.Core.Entities;
+using UmaPlanner.Infrastructure.Data;
 
-namespace UmaPlanner.Infrastructure.Data;
+namespace UmaPlanner.Infrastructure.Data.Event;
 
-public class UmaRaceSheetPollingService : BackgroundService
+public class RaceSheetPollingService : BackgroundService
 {
-    private readonly ILogger<UmaRaceSheetPollingService> _logger;
+    private readonly ILogger<RaceSheetPollingService> _logger;
     private readonly UmaSheetOptions _options;
     private readonly SheetsService _sheetsService;
-    private readonly RaceEventCache _cache;
+    private readonly Cache _cache;
 
-    public UmaRaceSheetPollingService(
-        ILogger<UmaRaceSheetPollingService> logger,
+    public RaceSheetPollingService(
+        ILogger<RaceSheetPollingService> logger,
         IConfiguration configuration,
-        RaceEventCache cache)
+        Cache cache)
     {
         _logger = logger;
         _cache = cache;

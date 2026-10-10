@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using UmaPlanner.Core.Entities;
 using UmaPlanner.Infrastructure.Data;
@@ -11,6 +12,7 @@ public static class UserEndpoints
         app.MapGet("/users/me", async (
             HttpContext context,
             AppDbContext db,
+            IConfiguration configuration,
             CancellationToken cancellationToken) =>
         {
             var userId = context.Session.GetString(DiscordAuthEndpoints.UserSessionKey);
@@ -25,7 +27,14 @@ public static class UserEndpoints
 
             return user is null
                 ? Results.Unauthorized()
-                : Results.Ok(user);
+                : Results.Ok(new CurrentUserResponse(
+                    user.Id,
+                    user.DiscordId,
+                    user.Username,
+                    user.AvatarUrl,
+                    user.TrainerId,
+                    user.CreatedAt,
+                    AdminAuthorization.IsAdmin(user, configuration) ? true : null));
         });
 
         app.MapGet("/users", async (
@@ -74,13 +83,13 @@ public static class UserEndpoints
         });
 
         app.MapPost("/users", async (
-            UserOptions user,
+            CreateUserRequest request,
             AppDbContext db,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(user.Id) ||
-                string.IsNullOrWhiteSpace(user.DiscordId) ||
-                string.IsNullOrWhiteSpace(user.Username))
+            if (string.IsNullOrWhiteSpace(request.Id) ||
+                string.IsNullOrWhiteSpace(request.DiscordId) ||
+                string.IsNullOrWhiteSpace(request.Username))
             {
                 return Results.BadRequest(new
                 {
@@ -88,15 +97,22 @@ public static class UserEndpoints
                 });
             }
 
-            if (await db.Users.AnyAsync(existing => existing.Id == user.Id, cancellationToken))
+            if (await db.Users.AnyAsync(existing => existing.Id == request.Id, cancellationToken))
             {
-                return Results.Conflict(new { message = $"User with ID {user.Id} already exists." });
+                return Results.Conflict(new { message = $"User with ID {request.Id} already exists." });
             }
 
-            if (string.IsNullOrWhiteSpace(user.CreatedAt))
+            var user = new UserOptions
             {
-                user.CreatedAt = DateTimeOffset.UtcNow.ToString("O");
-            }
+                Id = request.Id,
+                DiscordId = request.DiscordId,
+                Username = request.Username,
+                AvatarUrl = request.AvatarUrl,
+                TrainerId = request.TrainerId,
+                CreatedAt = string.IsNullOrWhiteSpace(request.CreatedAt)
+                    ? DateTimeOffset.UtcNow.ToString("O")
+                    : request.CreatedAt
+            };
 
             db.Users.Add(user);
             await db.SaveChangesAsync(cancellationToken);
@@ -104,6 +120,24 @@ public static class UserEndpoints
             return Results.Created($"/users/{user.Id}", user);
         });
     }
+
+    private sealed record CreateUserRequest(
+        string? Id,
+        string? DiscordId,
+        string? Username,
+        string? AvatarUrl,
+        string? TrainerId,
+        string? CreatedAt);
+
+    private sealed record CurrentUserResponse(
+        string Id,
+        string DiscordId,
+        string Username,
+        string? AvatarUrl,
+        string? TrainerId,
+        string CreatedAt,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        bool? IsAdmin);
 
     private sealed record TrainerIdRequest(string? TrainerId);
 }

@@ -88,12 +88,13 @@ public static class TeamEndpoints
             {
                 if (existing.TryGetValue(request.Event, out var team))
                 {
-                    if (request.LastUpdate > GetLastUpdate(team.Data))
+                    if (request.LastUpdate > GetLastUpdate(team.Data) &&
+                        !UmaValuesMatch(team.Data, request.Data))
                     {
                         team.Data = request.Data;
                     }
                 }
-                else
+                else if (HasUmaValue(request.Data))
                 {
                     db.Teams.Add(new UserTeam
                     {
@@ -132,4 +133,33 @@ public static class TeamEndpoints
             ? lastUpdate
             : 0;
     }
+
+    private static bool HasUmaValue(string data)
+    {
+        var request = DeserializeTeam(data);
+        return
+            !string.IsNullOrWhiteSpace(request.Uma1) ||
+            !string.IsNullOrWhiteSpace(request.Uma2) ||
+            !string.IsNullOrWhiteSpace(request.Uma3);
+    }
+
+    private static bool UmaValuesMatch(string existingData, string requestedData)
+    {
+        var existing = DeserializeTeam(existingData);
+        var requested = DeserializeTeam(requestedData);
+
+        return SameUmaValue(existing.Uma1, requested.Uma1) &&
+               SameUmaValue(existing.Uma2, requested.Uma2) &&
+               SameUmaValue(existing.Uma3, requested.Uma3);
+    }
+
+    private static TeamRequest DeserializeTeam(string data) =>
+        JsonSerializer.Deserialize<TeamRequest>(data, JsonSerializerOptions.Web)
+        ?? throw new JsonException("Team data is empty.");
+
+    private static bool SameUmaValue(string? first, string? second) =>
+        string.Equals(NormalizeUmaValue(first), NormalizeUmaValue(second), StringComparison.Ordinal);
+
+    private static string? NormalizeUmaValue(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 }
