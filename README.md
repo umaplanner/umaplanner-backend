@@ -83,7 +83,8 @@ then writes summaries to
 `data/overview/<event>.json` in R2. The JSON contains `sha256` and `data`
 properties, plus `nextUpdate`, an ISO-8601 UTC timestamp for the next scheduled
 summary. The summary data includes `userCount`, the number of distinct users
-with a stored team for that event. `runningStyles` is an array of style summaries;
+with at least one valid referenced build included in the summary.
+`runningStyles` is an array of style summaries;
 each includes its build `count`, per-skill and per-support-card counts, and the
 per-style outfit counts. Each also includes the average of each available stat
 (`speed`, `stamina`, `power`, `guts`, and `wisdom`). The hash covers both the

@@ -91,13 +91,8 @@ public sealed class EventSummaryService(
 
         foreach (var eventTeams in teams.GroupBy(team => team.Event, StringComparer.Ordinal))
         {
-            var summary = new EventSummary
-            {
-                UserCount = eventTeams
-                    .Select(team => team.UserId)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count()
-            };
+            var summary = new EventSummary();
+            var usersWithBuilds = new HashSet<string>(StringComparer.Ordinal);
             var runningStyles = new SortedDictionary<string, RunningStyleAccumulator>(StringComparer.Ordinal);
             foreach (var team in eventTeams)
             {
@@ -117,6 +112,7 @@ public sealed class EventSummaryService(
                     using var buildDocument = Parse(build.Data, "build", team.UserId, team.Event);
                     if (buildDocument is not null && TryReadBuild(buildDocument.RootElement, out var data))
                     {
+                        usersWithBuilds.Add(team.UserId);
                         teamBuilds.Add(data);
                         Add(summary.Outfits, data.OutfitId);
                         if (!runningStyles.TryGetValue(data.RunningStyle, out var style))
@@ -146,7 +142,7 @@ public sealed class EventSummaryService(
 
             await WriteIfChangedAsync(eventTeams.Key, new EventSummary
             {
-                UserCount = summary.UserCount,
+                UserCount = usersWithBuilds.Count,
                 Outfits = summary.Outfits,
                 Skills = summary.Skills,
                 RunningStyles = runningStyles.Values.Select(style => style.ToSummary()).ToArray(),
