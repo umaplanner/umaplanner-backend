@@ -7,4 +7,6 @@ public sealed class DailyStat
     public long UserCount { get; set; }
     public long BuildCount { get; set; }
     public long TeamCount { get; set; }
+    public long ResultCount { get; set; }
+    public long TicketCount { get; set; }
 }

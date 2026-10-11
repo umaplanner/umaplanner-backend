@@ -33,6 +33,8 @@ public static class AdminEndpoints
             if (!IsValidComparisonOffset(compareTo))
                 return Results.BadRequest(new { message = "compareTo must be between 1 and 3650 days." });
 
+            await StatsSnapshot.RefreshResultCountsAsync(db, periodDays.Today, cancellationToken);
+
             var stats = await db.DailyStats
                 .AsNoTracking()
                 .Where(stat =>
@@ -128,6 +130,8 @@ public static class AdminEndpoints
             if (!IsValidComparisonOffset(compareTo))
                 return Results.BadRequest(new { message = "compareTo must be between 1 and 3650 days." });
 
+            await StatsSnapshot.RefreshResultCountsAsync(db, periodDays.Today, cancellationToken);
+
             var stats = await db.DailyStats
                 .AsNoTracking()
                 .Where(stat =>
@@ -219,7 +223,13 @@ public static class AdminEndpoints
         compareTo is null || compareTo is >= 1 and <= 3650;
 
     private static DailyStatsResponse ToResponse(DailyStat stat) =>
-        new(stat.Date, stat.UserCount, stat.BuildCount, stat.TeamCount);
+        new(
+            stat.Date,
+            stat.UserCount,
+            stat.BuildCount,
+            stat.TeamCount,
+            stat.ResultCount,
+            stat.TicketCount);
 
     private static StatsPercentChangeResponse CreatePercentChange(
         DailyStat? latest,
@@ -234,7 +244,13 @@ public static class AdminEndpoints
                 : PercentChange(latest.BuildCount, compared.BuildCount),
             latest is null || compared is null
                 ? null
-                : PercentChange(latest.TeamCount, compared.TeamCount));
+                : PercentChange(latest.TeamCount, compared.TeamCount),
+            latest is null || compared is null
+                ? null
+                : PercentChange(latest.ResultCount, compared.ResultCount),
+            latest is null || compared is null
+                ? null
+                : PercentChange(latest.TicketCount, compared.TicketCount));
     }
 
     private static double? PercentChange(long latest, long comparedTo) =>
@@ -251,12 +267,16 @@ public static class AdminEndpoints
         DateOnly Date,
         long Users,
         long Builds,
-        long Teams);
+        long Teams,
+        long Results,
+        long Tickets);
 
     private sealed record StatsPercentChangeResponse(
         double? UsersPercentChange,
         double? BuildsPercentChange,
-        double? TeamsPercentChange);
+        double? TeamsPercentChange,
+        double? ResultsPercentChange,
+        double? TicketsPercentChange);
 }
 
 public static class AdminAuthorization

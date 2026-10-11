@@ -55,7 +55,9 @@ public sealed class AdminEndpointRoutingTests
                     Event = "CM 1",
                     UserCount = 1,
                     BuildCount = 1,
-                    TeamCount = 1
+                    TeamCount = 1,
+                    ResultCount = 2,
+                    TicketCount = 4
                 });
             await db.SaveChangesAsync();
         }
@@ -87,7 +89,7 @@ public sealed class AdminEndpointRoutingTests
             using var generalJson = System.Text.Json.JsonDocument.Parse(
                 await generalResponse.Content.ReadAsStringAsync());
             Assert.Equal(
-                new[] { "buildsPercentChange", "teamsPercentChange", "usersPercentChange" },
+                new[] { "buildsPercentChange", "resultsPercentChange", "teamsPercentChange", "ticketsPercentChange", "usersPercentChange" },
                 generalJson.RootElement
                     .GetProperty("comparison")
                     .EnumerateObject()
@@ -99,6 +101,12 @@ public sealed class AdminEndpointRoutingTests
                 property => Assert.Equal(
                     System.Text.Json.JsonValueKind.Null,
                     property.Value.ValueKind));
+            Assert.Equal(
+                0,
+                generalJson.RootElement.GetProperty("data")[0].GetProperty("results").GetInt64());
+            Assert.Equal(
+                0,
+                generalJson.RootElement.GetProperty("data")[0].GetProperty("tickets").GetInt64());
 
             using var eventJson = System.Text.Json.JsonDocument.Parse(
                 await eventResponse.Content.ReadAsStringAsync());
@@ -106,7 +114,7 @@ public sealed class AdminEndpointRoutingTests
                 .GetProperty("comparison")
                 .GetProperty("CM 1");
             Assert.Equal(
-                new[] { "buildsPercentChange", "teamsPercentChange", "usersPercentChange" },
+                new[] { "buildsPercentChange", "resultsPercentChange", "teamsPercentChange", "ticketsPercentChange", "usersPercentChange" },
                 eventComparison.EnumerateObject()
                     .Select(property => property.Name)
                     .Order()
@@ -145,12 +153,32 @@ public sealed class AdminEndpointRoutingTests
                 Username = "admin",
                 CreatedAt = "2026-10-10T00:00:00Z"
             });
+            db.Users.Add(new UserOptions
+            {
+                Id = "result-user",
+                DiscordId = "result-discord",
+                Username = "result-user",
+                CreatedAt = "2026-10-10T00:00:00Z"
+            });
+            db.Results.AddRange(
+                new UserResult
+                {
+                    UserId = "admin-user",
+                    Event = "CM 1",
+                    Data = """{"round1Day1":[1,2]}"""
+                },
+                new UserResult
+                {
+                    UserId = "result-user",
+                    Event = "CM 1",
+                    Data = """{"round2Day1":[1,2]}"""
+                });
             db.DailyStats.AddRange(
                 new DailyStat { Date = today, Event = string.Empty },
                 new DailyStat { Date = today.AddDays(-3), Event = string.Empty },
-                new DailyStat { Date = today, Event = "CM 1", UserCount = 2 },
+                new DailyStat { Date = today, Event = "CM 1", UserCount = 2, ResultCount = 2, TicketCount = 4 },
                 new DailyStat { Date = today, Event = "LoH 1", UserCount = 4 },
-                new DailyStat { Date = today.AddDays(-3), Event = "CM 1", UserCount = 1 },
+                new DailyStat { Date = today.AddDays(-3), Event = "CM 1", UserCount = 1, ResultCount = 1, TicketCount = 2 },
                 new DailyStat { Date = today.AddDays(-3), Event = "LoH 1", UserCount = 3 });
             await db.SaveChangesAsync();
         }
@@ -184,14 +212,22 @@ public sealed class AdminEndpointRoutingTests
             Assert.Equal(
                 2,
                 events.GetProperty("CM 1")[0].GetProperty("users").GetInt64());
+            Assert.Equal(
+                4,
+                events.GetProperty("CM 1")[0].GetProperty("tickets").GetInt64());
+            Assert.Equal(
+                2,
+                events.GetProperty("CM 1")[0].GetProperty("results").GetInt64());
             var comparison = json.RootElement.GetProperty("comparison");
             Assert.Equal(
-                new[] { "buildsPercentChange", "teamsPercentChange", "usersPercentChange" },
+                new[] { "buildsPercentChange", "resultsPercentChange", "teamsPercentChange", "ticketsPercentChange", "usersPercentChange" },
                 comparison.EnumerateObject()
                     .Select(property => property.Name)
                     .Order()
                     .ToArray());
             Assert.Equal(100, comparison.GetProperty("usersPercentChange").GetDouble());
+            Assert.Equal(100, comparison.GetProperty("resultsPercentChange").GetDouble());
+            Assert.Equal(100, comparison.GetProperty("ticketsPercentChange").GetDouble());
         }
         finally
         {

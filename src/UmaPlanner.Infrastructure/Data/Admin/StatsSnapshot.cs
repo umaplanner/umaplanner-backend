@@ -6,6 +6,63 @@ namespace UmaPlanner.Infrastructure.Data.Admin;
 
 public static class StatsSnapshot
 {
+    public static async Task RefreshResultCountsAsync(
+        AppDbContext db,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var resultRows = await db.Results
+            .AsNoTracking()
+            .Select(result => new { result.Event, result.Data })
+            .ToListAsync(cancellationToken);
+        var resultCounts = resultRows
+            .GroupBy(result => result.Event)
+            .Select(group => new ResultEventCount(
+                group.Key,
+                group.LongCount(),
+                group.Sum(result => CountTickets(result.Data))))
+            .ToArray();
+        var currentStats = await db.DailyStats
+            .Where(stat => stat.Date == date)
+            .ToListAsync(cancellationToken);
+        var currentStatsByEvent = currentStats.ToDictionary(stat => stat.Event);
+
+        foreach (var stat in currentStats)
+        {
+            stat.ResultCount = 0;
+            stat.TicketCount = 0;
+        }
+
+        Upsert(
+            string.Empty,
+            resultRows.LongCount(),
+            resultCounts.Sum(count => count.Tickets));
+        foreach (var resultCount in resultCounts)
+            Upsert(resultCount.Event, resultCount.Results, resultCount.Tickets);
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        void Upsert(string eventName, long results, long tickets)
+        {
+            if (currentStatsByEvent.TryGetValue(eventName, out var stat))
+            {
+                stat.ResultCount = results;
+                stat.TicketCount = tickets;
+                return;
+            }
+
+            stat = new DailyStat
+            {
+                Date = date,
+                Event = eventName,
+                ResultCount = results,
+                TicketCount = tickets
+            };
+            currentStatsByEvent.Add(eventName, stat);
+            db.DailyStats.Add(stat);
+        }
+    }
+
     public static async Task CaptureAsync(
         AppDbContext db,
         DateOnly date,
@@ -27,6 +84,19 @@ public static class StatsSnapshot
             .GroupBy(team => team.Event)
             .Select(group => new { Event = group.Key, Count = group.LongCount() })
             .ToArray();
+        var resultRows = await db.Results
+            .AsNoTracking()
+            .Select(result => new { result.Event, result.Data })
+            .ToListAsync(cancellationToken);
+        var resultCounts = resultRows
+            .GroupBy(result => result.Event)
+            .Select(group => new
+            {
+                Event = group.Key,
+                ResultCount = group.LongCount(),
+                TicketCount = group.Sum(result => CountTickets(result.Data))
+            })
+            .ToArray();
         var eventUserEntries = await db.UmaBuilds
             .Select(build => new { build.Event, build.UserId })
             .Union(db.Results.Select(result => new { result.Event, result.UserId }))
@@ -46,12 +116,15 @@ public static class StatsSnapshot
         var eventNames = knownEvents
             .Concat(buildCounts.Select(count => count.Event))
             .Concat(teamCounts.Select(count => count.Event))
+            .Concat(resultCounts.Select(count => count.Event))
             .Concat(usersByEvent.Keys)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         var buildsByEvent = buildCounts.ToDictionary(count => count.Event, count => count.Count);
         var teamsByEvent = teamCounts.ToDictionary(count => count.Event, count => count.Count);
+        var resultsByEvent = resultCounts.ToDictionary(count => count.Event, count => count.ResultCount);
+        var ticketsByEvent = resultCounts.ToDictionary(count => count.Event, count => count.TicketCount);
 
         var existingForDate = await db.DailyStats
             .Where(stat => stat.Date == date)
@@ -62,14 +135,18 @@ public static class StatsSnapshot
             string.Empty,
             userCount,
             buildCounts.Sum(count => count.Count),
-            teamCounts.Sum(count => count.Count));
+            teamCounts.Sum(count => count.Count),
+            resultRows.LongCount(),
+            resultCounts.Sum(count => count.TicketCount));
 
         foreach (var eventName in eventNames)
             Upsert(
                 eventName,
                 usersByEvent.GetValueOrDefault(eventName),
                 buildsByEvent.GetValueOrDefault(eventName),
-                teamsByEvent.GetValueOrDefault(eventName));
+                teamsByEvent.GetValueOrDefault(eventName),
+                resultsByEvent.GetValueOrDefault(eventName),
+                ticketsByEvent.GetValueOrDefault(eventName));
 
         var removedEvents = existingForDate
             .Where(stat => stat.Event != string.Empty && !eventNames.Contains(stat.Event))
@@ -78,13 +155,21 @@ public static class StatsSnapshot
 
         await db.SaveChangesAsync(cancellationToken);
 
-        void Upsert(string eventName, long users, long builds, long teams)
+        void Upsert(
+            string eventName,
+            long users,
+            long builds,
+            long teams,
+            long results,
+            long tickets)
         {
             if (existingByEvent.TryGetValue(eventName, out var existing))
             {
                 existing.UserCount = users;
                 existing.BuildCount = builds;
                 existing.TeamCount = teams;
+                existing.ResultCount = results;
+                existing.TicketCount = tickets;
                 return;
             }
 
@@ -94,9 +179,23 @@ public static class StatsSnapshot
                 Event = eventName,
                 UserCount = users,
                 BuildCount = builds,
-                TeamCount = teams
+                TeamCount = teams,
+                ResultCount = results,
+                TicketCount = tickets
             });
         }
+    }
+
+    private static long CountTickets(string data)
+    {
+        using var document = JsonDocument.Parse(data);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+            return 0;
+
+        return root.EnumerateObject()
+            .Where(property => property.Value.ValueKind == JsonValueKind.Array)
+            .Sum(property => (long)property.Value.GetArrayLength());
     }
 
     private static bool HasSelectedUma(string data)
@@ -109,4 +208,6 @@ public static class StatsSnapshot
                    selection.ValueKind == JsonValueKind.String &&
                    !string.IsNullOrWhiteSpace(selection.GetString()));
     }
+
+    private sealed record ResultEventCount(string Event, long Results, long Tickets);
 }

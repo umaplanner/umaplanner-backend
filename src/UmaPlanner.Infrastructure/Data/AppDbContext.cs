@@ -80,6 +80,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(stat => stat.UserCount).IsRequired();
             entity.Property(stat => stat.BuildCount).IsRequired();
             entity.Property(stat => stat.TeamCount).IsRequired();
+            entity.Property(stat => stat.ResultCount).IsRequired();
+            entity.Property(stat => stat.TicketCount).IsRequired();
         });
     }
 }

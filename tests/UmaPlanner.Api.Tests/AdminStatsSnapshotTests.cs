@@ -45,6 +45,25 @@ public sealed class AdminStatsSnapshotTests
                 Event = "CM 1",
                 Data = """{"uma1":null,"uma2":"","uma3":"  "}"""
             });
+        db.Results.AddRange(
+            new UserResult
+            {
+                UserId = "user-1",
+                Event = "CM 1",
+                Data = """{"round1Day1":[1,2,1,1],"round1Day2":[1,2]}"""
+            },
+            new UserResult
+            {
+                UserId = "user-2",
+                Event = "CM 1",
+                Data = """{"round2Day3":[1,2]}"""
+            },
+            new UserResult
+            {
+                UserId = "user-2",
+                Event = "CM 2",
+                Data = """{"round1Day1":[1]}"""
+            });
         await db.SaveChangesAsync();
 
         var date = new DateOnly(2026, 10, 10);
@@ -55,16 +74,22 @@ public sealed class AdminStatsSnapshotTests
         Assert.Equal(3, general.UserCount);
         Assert.Equal(3, general.BuildCount);
         Assert.Equal(2, general.TeamCount);
+        Assert.Equal(3, general.ResultCount);
+        Assert.Equal(9, general.TicketCount);
 
         var cm1 = Assert.Single(stats, stat => stat.Event == "CM 1");
         Assert.Equal(2, cm1.UserCount);
         Assert.Equal(2, cm1.BuildCount);
         Assert.Equal(2, cm1.TeamCount);
+        Assert.Equal(2, cm1.ResultCount);
+        Assert.Equal(8, cm1.TicketCount);
 
         var cm2 = Assert.Single(stats, stat => stat.Event == "CM 2");
         Assert.Equal(1, cm2.UserCount);
         Assert.Equal(1, cm2.BuildCount);
         Assert.Equal(0, cm2.TeamCount);
+        Assert.Equal(1, cm2.ResultCount);
+        Assert.Equal(1, cm2.TicketCount);
     }
 
     [Fact]
@@ -78,11 +103,18 @@ public sealed class AdminStatsSnapshotTests
             Event = "CM 1",
             Id = "build-1"
         });
+        db.Results.Add(new UserResult
+        {
+            UserId = "user-1",
+            Event = "CM 1",
+            Data = """{"round1Day1":["ticket-1","ticket-2"]}"""
+        });
         await db.SaveChangesAsync();
 
         var date = new DateOnly(2026, 10, 10);
         await StatsSnapshot.CaptureAsync(db, date, CancellationToken.None);
         db.UmaBuilds.RemoveRange(db.UmaBuilds);
+        db.Results.Single().Data = """{"round1Day1":["ticket-3"]}""";
         await db.SaveChangesAsync();
         await StatsSnapshot.CaptureAsync(db, date, CancellationToken.None);
 
@@ -93,8 +125,30 @@ public sealed class AdminStatsSnapshotTests
             .Where(stat => stat.Event == "CM 1")
             .ToListAsync());
         Assert.Equal(0, general.BuildCount);
-        Assert.Equal(0, eventStat.UserCount);
+        Assert.Equal(1, general.ResultCount);
+        Assert.Equal(1, general.TicketCount);
+        Assert.Equal(1, eventStat.UserCount);
         Assert.Equal(0, eventStat.BuildCount);
+        Assert.Equal(1, eventStat.ResultCount);
+        Assert.Equal(1, eventStat.TicketCount);
+    }
+
+    [Fact]
+    public async Task Capture_creates_zero_count_rows_when_there_are_no_datapoints()
+    {
+        await using var db = CreateContext();
+
+        var date = new DateOnly(2026, 10, 10);
+        await StatsSnapshot.CaptureAsync(db, date, CancellationToken.None);
+
+        var general = Assert.Single(await db.DailyStats.ToListAsync());
+        Assert.Equal(date, general.Date);
+        Assert.Equal(string.Empty, general.Event);
+        Assert.Equal(0, general.UserCount);
+        Assert.Equal(0, general.BuildCount);
+        Assert.Equal(0, general.TeamCount);
+        Assert.Equal(0, general.ResultCount);
+        Assert.Equal(0, general.TicketCount);
     }
 
     private static UserOptions CreateUser(string id) =>

@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -17,14 +16,9 @@ public sealed class StatsSnapshotPollingService(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var hasSnapshots = await db.DailyStats
-                .AnyAsync(stat => stat.Event == string.Empty, stoppingToken);
-            if (!hasSnapshots)
-            {
-                var date = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
-                await StatsSnapshot.CaptureAsync(db, date, stoppingToken);
-                logger.LogInformation("Captured initial admin statistics for {Date}", date);
-            }
+            var date = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+            await StatsSnapshot.CaptureAsync(db, date, stoppingToken);
+            logger.LogInformation("Refreshed current admin statistics for {Date}", date);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -32,7 +26,7 @@ public sealed class StatsSnapshotPollingService(
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Failed to capture initial admin statistics");
+            logger.LogError(exception, "Failed to refresh current admin statistics");
         }
 
         while (!stoppingToken.IsCancellationRequested)

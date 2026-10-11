@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using UmaPlanner.Core.Entities;
 using UmaPlanner.Infrastructure.Data;
+using UmaPlanner.Infrastructure.Data.Admin;
 
 namespace UmaPlanner.Api.Endpoints;
 
@@ -66,6 +67,7 @@ public static class ResultEndpoints
             IReadOnlyList<ResultRequest>? requests,
             HttpContext context,
             AppDbContext db,
+            TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
             var userId = context.Session.GetString(DiscordAuthEndpoints.UserSessionKey);
@@ -137,6 +139,8 @@ public static class ResultEndpoints
             }
 
             await db.SaveChangesAsync(cancellationToken);
+            var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+            await StatsSnapshot.CaptureAsync(db, today, cancellationToken);
             return Results.Ok(new { saved = uniqueRequests.Length });
         });
     }
