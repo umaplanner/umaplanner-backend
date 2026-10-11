@@ -77,18 +77,59 @@ public sealed class ResultEndpointStatsTests
                         data = new
                         {
                             lastUpdate = 1,
-                            round1Day1 = new[] { 1, 2, 1, 1 },
-                            round1Day2 = new[] { 1, 2 }
+                            round1Day1 = new Dictionary<string, object>
+                            {
+                                ["1"] = new
+                                {
+                                builds = new[]
+                                {
+                                    new { buildId = "a", wins = 2 },
+                                    new { buildId = "b", wins = 1 },
+                                    new { buildId = "c", wins = 1 }
+                                }
+                                },
+                                ["2"] = new
+                                {
+                                builds = new[]
+                                {
+                                    new { buildId = "d", wins = 3 },
+                                    new { buildId = "e", wins = 1 }
+                                }
+                                }
+                            }
                         }
                     }
                 });
 
             Assert.Equal(System.Net.HttpStatusCode.OK, saveResponse.StatusCode);
 
+            var updateResponse = await client.PostAsJsonAsync(
+                "/results",
+                new[]
+                {
+                    new
+                    {
+                        @event = "CM 1",
+                        data = new
+                        {
+                            lastUpdate = 2,
+                            round1Day1 = new Dictionary<string, object>
+                            {
+                                ["1"] = new { builds = Array.Empty<object>() },
+                                ["2"] = new { builds = Array.Empty<object>() },
+                                ["3"] = new { builds = Array.Empty<object>() }
+                            }
+                        }
+                    }
+                });
+            Assert.Equal(System.Net.HttpStatusCode.OK, updateResponse.StatusCode);
+
             await using (var scope = app.Services.CreateAsyncScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                Assert.Equal(1, await db.Results.LongCountAsync(
+                    result => result.UserId == "admin-user" && result.Event == "CM 1"));
                 var eventStat = await db.DailyStats.SingleAsync(
                     stat => stat.Date == today && stat.Event == "CM 1");
                 eventStat.ResultCount = 0;
@@ -105,7 +146,7 @@ public sealed class ResultEndpointStatsTests
                 .GetProperty("CM 1")[0];
 
             Assert.Equal(1, dailyStat.GetProperty("results").GetInt64());
-            Assert.Equal(6, dailyStat.GetProperty("tickets").GetInt64());
+            Assert.Equal(3, dailyStat.GetProperty("tickets").GetInt64());
         }
         finally
         {

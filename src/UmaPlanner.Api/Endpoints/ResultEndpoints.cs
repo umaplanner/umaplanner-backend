@@ -152,7 +152,12 @@ public static class ResultEndpoints
     private static bool TryGetLastUpdate(JsonElement data, out long lastUpdate)
     {
         lastUpdate = 0;
-        return data.TryGetProperty("lastUpdate", out var property) &&
+        var resultData = data.ValueKind == JsonValueKind.Object &&
+                         data.TryGetProperty("data", out var nestedData) &&
+                         nestedData.ValueKind == JsonValueKind.Object
+            ? nestedData
+            : data;
+        return resultData.TryGetProperty("lastUpdate", out var property) &&
                property.ValueKind == JsonValueKind.Number &&
                property.TryGetInt64(out lastUpdate) &&
                lastUpdate >= 0;

@@ -50,19 +50,29 @@ public sealed class AdminStatsSnapshotTests
             {
                 UserId = "user-1",
                 Event = "CM 1",
-                Data = """{"round1Day1":[1,2,1,1],"round1Day2":[1,2]}"""
+                Data = """
+                    {
+                      "lastUpdate":1791716200000,
+                      "round1Day1":{
+                        "1":{"builds":[{"buildId":"a","wins":2}]},
+                        "2":{"builds":[{"buildId":"b","wins":1}]}
+                      },
+                      "round1Day2":{},
+                      "finals":{"placement":2,"builds":[{"buildId":"a","placement":2}]}
+                    }
+                    """
             },
             new UserResult
             {
                 UserId = "user-2",
                 Event = "CM 1",
-                Data = """{"round2Day3":[1,2]}"""
+                Data = """{"round2Day3":{"1":{"builds":[{"buildId":"c","wins":4}]}}}"""
             },
             new UserResult
             {
                 UserId = "user-2",
                 Event = "CM 2",
-                Data = """{"round1Day1":[1]}"""
+                Data = """{"round1Day1":{"1":{"builds":[]}}}"""
             });
         await db.SaveChangesAsync();
 
@@ -75,14 +85,14 @@ public sealed class AdminStatsSnapshotTests
         Assert.Equal(3, general.BuildCount);
         Assert.Equal(2, general.TeamCount);
         Assert.Equal(3, general.ResultCount);
-        Assert.Equal(9, general.TicketCount);
+        Assert.Equal(4, general.TicketCount);
 
         var cm1 = Assert.Single(stats, stat => stat.Event == "CM 1");
         Assert.Equal(2, cm1.UserCount);
         Assert.Equal(2, cm1.BuildCount);
         Assert.Equal(2, cm1.TeamCount);
         Assert.Equal(2, cm1.ResultCount);
-        Assert.Equal(8, cm1.TicketCount);
+        Assert.Equal(3, cm1.TicketCount);
 
         var cm2 = Assert.Single(stats, stat => stat.Event == "CM 2");
         Assert.Equal(1, cm2.UserCount);
@@ -107,14 +117,14 @@ public sealed class AdminStatsSnapshotTests
         {
             UserId = "user-1",
             Event = "CM 1",
-            Data = """{"round1Day1":["ticket-1","ticket-2"]}"""
+            Data = """{"round1Day1":{"1":{},"2":{}}}"""
         });
         await db.SaveChangesAsync();
 
         var date = new DateOnly(2026, 10, 10);
         await StatsSnapshot.CaptureAsync(db, date, CancellationToken.None);
         db.UmaBuilds.RemoveRange(db.UmaBuilds);
-        db.Results.Single().Data = """{"round1Day1":["ticket-3"]}""";
+        db.Results.Single().Data = """{"round1Day1":{"1":{}}}""";
         await db.SaveChangesAsync();
         await StatsSnapshot.CaptureAsync(db, date, CancellationToken.None);
 

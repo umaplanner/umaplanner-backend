@@ -165,13 +165,13 @@ public sealed class AdminEndpointRoutingTests
                 {
                     UserId = "admin-user",
                     Event = "CM 1",
-                    Data = """{"round1Day1":[1,2]}"""
+                    Data = """{"round1Day1":{"1":{},"2":{}}}"""
                 },
                 new UserResult
                 {
                     UserId = "result-user",
                     Event = "CM 1",
-                    Data = """{"round2Day1":[1,2]}"""
+                    Data = """{"round2Day1":{"1":{},"2":{}}}"""
                 });
             db.DailyStats.AddRange(
                 new DailyStat { Date = today, Event = string.Empty },

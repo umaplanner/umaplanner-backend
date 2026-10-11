@@ -194,8 +194,34 @@ public static class StatsSnapshot
             return 0;
 
         return root.EnumerateObject()
-            .Where(property => property.Value.ValueKind == JsonValueKind.Array)
-            .Sum(property => (long)property.Value.GetArrayLength());
+            .Where(property => IsTicketCountProperty(property.Name))
+            .Where(property => property.Value.ValueKind == JsonValueKind.Object)
+            .Sum(property => property.Value.EnumerateObject().LongCount());
+    }
+
+    private static bool IsTicketCountProperty(string name)
+    {
+        const string roundPrefix = "round";
+        const string daySeparator = "Day";
+        if (!name.StartsWith(roundPrefix, StringComparison.Ordinal))
+            return false;
+
+        var separatorIndex = name.IndexOf(daySeparator, roundPrefix.Length, StringComparison.Ordinal);
+        return separatorIndex > roundPrefix.Length &&
+               separatorIndex + daySeparator.Length < name.Length &&
+               IsAsciiDigits(name.AsSpan(roundPrefix.Length, separatorIndex - roundPrefix.Length)) &&
+               IsAsciiDigits(name.AsSpan(separatorIndex + daySeparator.Length));
+    }
+
+    private static bool IsAsciiDigits(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value)
+        {
+            if (!char.IsAsciiDigit(character))
+                return false;
+        }
+
+        return value.Length > 0;
     }
 
     private static bool HasSelectedUma(string data)

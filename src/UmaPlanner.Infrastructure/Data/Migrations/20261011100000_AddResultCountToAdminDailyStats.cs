@@ -32,15 +32,20 @@ public partial class AddResultCountToAdminDailyStats : Migration
             ),
             ticket_counts AS (
                 SELECT results."Event",
-                       SUM(jsonb_array_length(day_data.value))::bigint AS ticket_count
+                       SUM((
+                           SELECT COUNT(*)
+                           FROM jsonb_object_keys(day_data.value)
+                       ))::bigint AS ticket_count
                 FROM user_results AS results
                 CROSS JOIN LATERAL jsonb_each(
                     CASE
-                        WHEN jsonb_typeof(results."Data") = 'object' THEN results."Data"
+                        WHEN jsonb_typeof(results."Data") = 'object'
+                            THEN results."Data"
                         ELSE '{}'::jsonb
                     END
                 ) AS day_data(key, value)
-                WHERE jsonb_typeof(day_data.value) = 'array'
+                WHERE day_data.key ~ '^round[0-9]+Day[0-9]+$'
+                  AND jsonb_typeof(day_data.value) = 'object'
                 GROUP BY results."Event"
             )
             UPDATE admin_daily_stats AS stats
