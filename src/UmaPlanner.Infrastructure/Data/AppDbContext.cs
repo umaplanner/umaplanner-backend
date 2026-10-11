@@ -14,6 +14,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UserTeam> Teams => Set<UserTeam>();
     public DbSet<UserResult> Results => Set<UserResult>();
     public DbSet<DailyStat> DailyStats => Set<DailyStat>();
+    public DbSet<AnonymousTeamContribution> AnonymousTeamContributions =>
+        Set<AnonymousTeamContribution>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -69,6 +71,33 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(result => result.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AnonymousTeamContribution>(entity =>
+        {
+            entity.ToTable("anonymous_team_contributions");
+            entity.HasKey(contribution => new
+            {
+                contribution.AnonymousId,
+                contribution.Event
+            });
+            entity.Property(contribution => contribution.AnonymousId)
+                .HasMaxLength(36)
+                .IsRequired();
+            entity.Property(contribution => contribution.Event)
+                .HasMaxLength(128)
+                .IsRequired();
+            entity.Property(contribution => contribution.TeamData)
+                .HasColumnType("jsonb")
+                .IsRequired();
+            entity.Property(contribution => contribution.BuildsData)
+                .HasColumnType("jsonb")
+                .IsRequired();
+            entity.Property(contribution => contribution.LastUpdate)
+                .IsRequired();
+            entity.Property(contribution => contribution.UpdatedAt)
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
         });
 
         modelBuilder.Entity<DailyStat>(entity =>

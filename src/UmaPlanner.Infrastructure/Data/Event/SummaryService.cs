@@ -88,60 +88,76 @@ public sealed class SummaryService(
             .AsNoTracking()
             .Where(build => build.DeletedAt == null)
             .ToListAsync(cancellationToken);
+        var anonymousContributions = await db.AnonymousTeamContributions
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
         var buildsByKey = builds.ToDictionary(build => (build.UserId, build.Event, build.Id));
 
-        foreach (var eventTeams in teams.GroupBy(team => team.Event, StringComparer.Ordinal))
+        var eventNames = teams.Select(team => team.Event)
+            .Concat(anonymousContributions.Select(contribution => contribution.Event))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+        foreach (var eventName in eventNames)
         {
             var summary = new Summary();
             var usersWithBuilds = new HashSet<string>(StringComparer.Ordinal);
             var runningStyles = new SortedDictionary<string, RunningStyleAccumulator>(StringComparer.Ordinal);
-            foreach (var team in eventTeams)
+            foreach (var team in teams.Where(team => team.Event == eventName))
             {
                 using var teamDocument = Parse(team.Data, "team", team.UserId, team.Event);
                 if (teamDocument is null)
                     continue;
 
-                var teamBuilds = new List<BuildData>();
-                foreach (var slot in new[] { "uma1", "uma2", "uma3" })
-                {
-                    if (!teamDocument.RootElement.TryGetProperty(slot, out var id) ||
-                        id.ValueKind != JsonValueKind.String ||
-                        string.IsNullOrWhiteSpace(id.GetString()) ||
-                        !buildsByKey.TryGetValue((team.UserId, team.Event, id.GetString()!), out var build))
-                        continue;
+                AddTeamSummary(
+                    teamDocument.RootElement,
+                    team.Event,
+                    team.UserId,
+                    id => buildsByKey.TryGetValue((team.UserId, team.Event, id), out var build)
+                        ? build.Data
+                        : null,
+                    summary,
+                    usersWithBuilds,
+                    runningStyles);
+            }
 
-                    using var buildDocument = Parse(build.Data, "build", team.UserId, team.Event);
-                    if (buildDocument is not null && TryReadBuild(buildDocument.RootElement, out var data))
+            foreach (var contribution in anonymousContributions.Where(
+                contribution => contribution.Event == eventName))
+            {
+                using var teamDocument = Parse(
+                    contribution.TeamData,
+                    "anonymous team",
+                    "anonymous contributor",
+                    contribution.Event);
+                using var buildsDocument = Parse(
+                    contribution.BuildsData,
+                    "anonymous builds",
+                    "anonymous contributor",
+                    contribution.Event);
+                if (teamDocument is null || buildsDocument is null ||
+                    buildsDocument.RootElement.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                var anonymousBuilds = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var build in buildsDocument.RootElement.EnumerateArray())
+                {
+                    if (build.ValueKind == JsonValueKind.Object &&
+                        TryString(build, "id", out var id))
                     {
-                        usersWithBuilds.Add(team.UserId);
-                        teamBuilds.Add(data);
-                        Add(summary.Outfits, data.OutfitId);
-                        if (!runningStyles.TryGetValue(data.RunningStyle, out var style))
-                        {
-                            style = new RunningStyleAccumulator(data.RunningStyle);
-                            runningStyles.Add(data.RunningStyle, style);
-                        }
-                        style.Add(data);
-                        if (!data.IsPlan)
-                        {
-                            foreach (var skill in data.Skills)
-                                Add(summary.Skills, skill);
-                        }
-                        foreach (var card in data.SupportCards)
-                            Add(summary.SupportCards, card);
+                        anonymousBuilds[id] = build.GetRawText();
                     }
                 }
 
-                if (teamBuilds.Count == 3)
-                {
-                    var combination = string.Join(",", teamBuilds
-                        .Select(build => build.RunningStyle)
-                        .Order(StringComparer.Ordinal));
-                    Add(summary.RunningStyleCombinations, combination);
-                }
+                AddTeamSummary(
+                    teamDocument.RootElement,
+                    contribution.Event,
+                    $"anonymous:{contribution.AnonymousId}",
+                    id => anonymousBuilds.GetValueOrDefault(id),
+                    summary,
+                    usersWithBuilds,
+                    runningStyles);
             }
 
-            await WriteIfChangedAsync(eventTeams.Key, new Summary
+            await WriteIfChangedAsync(eventName, new Summary
             {
                 UserCount = usersWithBuilds.Count,
                 Outfits = summary.Outfits,
@@ -150,6 +166,62 @@ public sealed class SummaryService(
                 RunningStyleCombinations = summary.RunningStyleCombinations,
                 SupportCards = summary.SupportCards
             }, cancellationToken);
+        }
+    }
+
+    private void AddTeamSummary(
+        JsonElement team,
+        string eventName,
+        string contributorId,
+        Func<string, string?> getBuildData,
+        Summary summary,
+        HashSet<string> usersWithBuilds,
+        SortedDictionary<string, RunningStyleAccumulator> runningStyles)
+    {
+        if (team.ValueKind != JsonValueKind.Object)
+            return;
+
+        var teamBuilds = new List<BuildData>();
+        foreach (var slot in new[] { "uma1", "uma2", "uma3" })
+        {
+            if (!team.TryGetProperty(slot, out var id) ||
+                id.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(id.GetString()))
+                continue;
+
+            var buildData = getBuildData(id.GetString()!);
+            if (buildData is null)
+                continue;
+
+            using var buildDocument = Parse(buildData, "build", contributorId, eventName);
+            if (buildDocument is null ||
+                !TryReadBuild(buildDocument.RootElement, out var data))
+                continue;
+
+            usersWithBuilds.Add(contributorId);
+            teamBuilds.Add(data);
+            Add(summary.Outfits, data.OutfitId);
+            if (!runningStyles.TryGetValue(data.RunningStyle, out var style))
+            {
+                style = new RunningStyleAccumulator(data.RunningStyle);
+                runningStyles.Add(data.RunningStyle, style);
+            }
+            style.Add(data);
+            if (!data.IsPlan)
+            {
+                foreach (var skill in data.Skills)
+                    Add(summary.Skills, skill);
+            }
+            foreach (var card in data.SupportCards)
+                Add(summary.SupportCards, card);
+        }
+
+        if (teamBuilds.Count == 3)
+        {
+            var combination = string.Join(",", teamBuilds
+                .Select(build => build.RunningStyle)
+                .Order(StringComparer.Ordinal));
+            Add(summary.RunningStyleCombinations, combination);
         }
     }
 
@@ -244,7 +316,8 @@ public sealed class SummaryService(
     private static bool TryReadBuild(JsonElement root, out BuildData data)
     {
         data = default!;
-        if (!TryString(root, "outfitId", out var outfit) ||
+        if (root.ValueKind != JsonValueKind.Object ||
+            !TryString(root, "outfitId", out var outfit) ||
             !TryString(root, "strategy", out var strategy) ||
             !root.TryGetProperty("skills", out var skills) || skills.ValueKind != JsonValueKind.Array)
             return false;
@@ -260,9 +333,12 @@ public sealed class SummaryService(
                     supportCards.ValueKind == JsonValueKind.Array
             ? supportCards.EnumerateArray()
                 .Where(card => card.ValueKind == JsonValueKind.Object &&
-                    card.TryGetProperty("support_card_id", out var id) &&
+                    (card.TryGetProperty("support_card_id", out var id) ||
+                     card.TryGetProperty("supportCardId", out id)) &&
                     id.ValueKind == JsonValueKind.Number)
-                .Select(card => card.GetProperty("support_card_id").GetRawText())
+                .Select(card => (card.TryGetProperty("support_card_id", out var id)
+                    ? id
+                    : card.GetProperty("supportCardId")).GetRawText())
                 .ToArray()
             : [];
         var stats = new SortedDictionary<string, double>(StringComparer.Ordinal);

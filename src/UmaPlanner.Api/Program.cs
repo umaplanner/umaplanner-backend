@@ -151,6 +151,7 @@ app.MapUserEndpoints();
 app.MapAdminEndpoints();
 app.MapUmaBuildEndpoints();
 app.MapTeamEndpoints();
+app.MapAnonymousTeamEndpoints();
 app.MapResultEndpoints();
 
 app.Run();

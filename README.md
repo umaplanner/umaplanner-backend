@@ -80,6 +80,7 @@ prevent the application from starting. It then runs every 10 minutes by default,
 configurable with `EventSummary__IntervalMinutes`. It
 aligns runs to interval boundaries (for example, at `:00`, `:10`, `:20`, etc.
 for a 10-minute interval). It reads each user's teams and referenced builds,
+as well as anonymous planner contributions,
 then writes summaries to
 `data/overview/<event>.json` in R2. The JSON contains `sha256` and `data`
 properties, plus `nextUpdate`, an ISO-8601 UTC timestamp for the next scheduled
@@ -174,6 +175,11 @@ docker compose -f docker-compose.dev.yml down -v
 - `GET /users/{id}`: Gets one local user.
 - `GET /users/me`: Gets the currently authenticated user, including `avatarUrl`.
   `isAdmin` is `true` for admins and omitted for regular users.
+- `POST /anonymous/teams`: Stores or updates an anonymous browser's selected
+  team and its referenced build statistics for an event. It does not require
+  authentication or include build names. The browser-scoped ID is used only to
+  replace that browser's contribution; posting an empty team clears it. These
+  records are included in generated event overview summaries.
 - `GET /admin/stats?days=1`: Returns daily overall user, build, and team counts
   for the requested number of days (1-3650, default 1). A team is counted only
   when at least one of `uma1`, `uma2`, or `uma3` has a non-empty build selection.
